@@ -117,11 +117,33 @@ export async function initDb(): Promise<void> {
       );
     `);
 
+    // Lock de una sola fila para serializar el ciclo de recordatorios (evita envíos duplicados
+    // si dos invocaciones se solapan). Se implementa como fila de tabla, no como advisory lock
+    // de Postgres, porque el endpoint pooled de Neon (PgBouncer en modo transacción) no
+    // garantiza que un advisory lock de sesión persista entre sentencias del mismo cliente.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS Recordatorios_Lock (
+        id INTEGER PRIMARY KEY,
+        bloqueado_desde TIMESTAMP
+      );
+    `);
+    await client.query(`
+      INSERT INTO Recordatorios_Lock (id, bloqueado_desde) VALUES (1, NULL)
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_respuesta_participante_servicio ON Respuesta(participante_id, servicio_id);
       CREATE INDEX IF NOT EXISTS idx_intentos_servicio ON Intento_Envio(servicio_id);
       CREATE INDEX IF NOT EXISTS idx_intentos_participante_servicio ON Intento_Envio(participante_id, servicio_id, resultado);
       CREATE INDEX IF NOT EXISTS idx_historial_participante ON Historial_Participante(participante_id);
+    `);
+
+    // Defensa adicional (junto al lock de Recordatorios_Lock del ciclo de recordatorios)
+    // contra una ejecución concurrente que intente registrar el mismo intento dos veces.
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_intento_envio_unico
+        ON Intento_Envio(participante_id, servicio_id, numero_recordatorio);
     `);
 
     for (const grupo of BUSINESS_CONSTANTS.GRUPOS_BASE) {
@@ -146,6 +168,7 @@ export async function resetDb(): Promise<void> {
   const client = await getPool().connect();
   try {
     await client.query(`
+      DROP TABLE IF EXISTS Recordatorios_Lock CASCADE;
       DROP TABLE IF EXISTS Historial_Participante CASCADE;
       DROP TABLE IF EXISTS Intento_Envio CASCADE;
       DROP TABLE IF EXISTS Respuesta CASCADE;

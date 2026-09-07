@@ -8,7 +8,8 @@ import { GroupsController } from './controllers/groupsController.js';
 import { ServicesController } from './controllers/servicesController.js';
 import { ParticipantsController } from './controllers/participantsController.js';
 import { ConfirmController } from './controllers/confirmController.js';
-import { requireAuth } from './middlewares/auth.js';
+import { RemindersController } from './controllers/remindersController.js';
+import { requireAuth, requireReminderAuth } from './middlewares/auth.js';
 
 export function createApp(): express.Express {
   const app = express();
@@ -70,6 +71,10 @@ export function createApp(): express.Express {
   app.get('/confirm/:token', ConfirmController.getForm);
   app.post('/confirm/:token', ConfirmController.submitForm);
   app.get('/confirm/:token/:accion', ConfirmController.quickAction);
+
+  // Automatización de recordatorios (Etapa 5, sesión de coordinador o Bearer CRON_SECRET)
+  app.get('/api/enviar-recordatorios', requireReminderAuth, RemindersController.triggerReminders);
+  app.post('/api/enviar-recordatorios', requireReminderAuth, RemindersController.triggerReminders);
 
   return app;
 }

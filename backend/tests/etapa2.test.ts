@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
-import { calcularEstado, formatearNombreServicio } from '../src/services/serviciosService.js';
+import {
+  calcularEstado,
+  formatearNombreServicio,
+  compararServiciosPorPrioridad,
+} from '../src/services/serviciosService.js';
 
 function addDays(days: number): string {
   const d = new Date();
@@ -32,6 +36,20 @@ describe('Etapa 2: Reglas de negocio y gestión de servicios', () => {
       // Ventana cerrada (hoy >= fecha_cierre)
       expect(calcularEstado(false, 3)).toBe('Vencido');
       expect(calcularEstado(false, 0)).toBe('Cerrado');
+    });
+
+    it('compararServiciosPorPrioridad ordena Vencido > Pendiente > Cerrado > Completo (RN-4)', () => {
+      const vencido = { estado: 'Vencido' as const, fecha_servicio: '2026-01-10' };
+      const pendienteTardio = { estado: 'Pendiente' as const, fecha_servicio: '2026-03-01' };
+      const pendienteTemprano = { estado: 'Pendiente' as const, fecha_servicio: '2026-02-01' };
+      const cerrado = { estado: 'Cerrado' as const, fecha_servicio: '2026-01-05' };
+      const completo = { estado: 'Completo' as const, fecha_servicio: '2026-01-01' };
+
+      const lista = [completo, cerrado, pendienteTardio, vencido, pendienteTemprano];
+      lista.sort(compararServiciosPorPrioridad);
+
+      // Dentro del mismo estado (Pendiente), ordena por fecha ascendente.
+      expect(lista).toEqual([vencido, pendienteTemprano, pendienteTardio, cerrado, completo]);
     });
   });
 
@@ -126,6 +144,21 @@ describe('Etapa 2: Reglas de negocio y gestión de servicios', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.errors).toContain('Formato de hora inválido.');
+    });
+  });
+
+  describe('GET /api/groups', () => {
+    it('con sesión retorna los grupos base (RF-3.1)', async () => {
+      const agent = request.agent(app);
+      await agent.post('/api/login').send({ password: config.coordinadorPassword });
+
+      const res = await agent.get('/api/groups');
+      expect(res.status).toBe(200);
+      const nombres = res.body.data.map((g: { name: string }) => g.name);
+      expect(nombres).toEqual(expect.arrayContaining(['Servidor', 'Inducción', 'Líder', 'Director']));
+      for (const grupo of res.body.data) {
+        expect(grupo).toEqual({ id: expect.any(Number), name: expect.any(String) });
+      }
     });
   });
 

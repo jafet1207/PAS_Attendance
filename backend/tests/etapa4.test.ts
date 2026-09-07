@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
 import { generarToken, decodificarToken } from '../src/tokens/index.js';
-import { calcularHoraLlegada, ventanaDeConfirmacionAbierta } from '../src/controllers/confirmController.js';
+import {
+  calcularHoraLlegada,
+  ventanaDeConfirmacionAbierta,
+  redondearBufferAMinutos,
+} from '../src/controllers/confirmController.js';
+import { generarIcs } from '../src/services/recordatoriosService.js';
+import { RespuestaModel } from '../src/models/respuesta.model.js';
+import { Mailer, establecerMailerDePruebas } from '../src/mailer/index.js';
 
 function addDays(days: number): string {
   const d = new Date();
@@ -26,6 +33,34 @@ describe('Etapa 4: Reglas de dominio en memoria', () => {
   it('calcularHoraLlegada resta el buffer según el grupo (RN-8)', () => {
     expect(calcularHoraLlegada('09:00', 'Servidor')).toBe('07:30'); // 1.5h antes
     expect(calcularHoraLlegada('09:00', 'Inducción')).toBe('07:00'); // 2.0h antes
+  });
+
+  it('redondearBufferAMinutos evita un desajuste de sub-minuto entre el texto y el .ics', () => {
+    // Regresión: un buffer que no cae en un número entero de minutos (1.51h = 90.6 min) debe
+    // redondearse UNA sola vez, en un único lugar, para que el texto mostrado y el adjunto de
+    // calendario .ics usen exactamente el mismo instante de llegada (antes, calcularHoraLlegada
+    // redondeaba a 91 min mientras generarIcs restaba 90.6 min sin redondear).
+    const bufferFraccionario = 1.51;
+    const bufferRedondeado = redondearBufferAMinutos(bufferFraccionario);
+    expect(bufferRedondeado * 60).toBe(91);
+
+    const horaServicio = '09:00';
+    const totalMinutos = 9 * 60 - Math.round(bufferRedondeado * 60); // 540 - 91 = 449
+    const horaLlegada = `${String(Math.floor(totalMinutos / 60)).padStart(2, '0')}:${String(totalMinutos % 60).padStart(2, '0')}`;
+    expect(horaLlegada).toBe('07:29');
+
+    const ics = generarIcs({
+      servicioId: 1,
+      participanteId: 1,
+      nombreServicio: 'Servicio de prueba',
+      fechaServicioYMD: '2026-09-13',
+      horaServicioHHMM: horaServicio,
+      horaLlegadaHHMM: horaLlegada,
+      bufferLlegadaHoras: bufferRedondeado,
+    });
+
+    // 09:00 CR (UTC-6) -> 15:00 UTC; menos los mismos 91 minutos -> 13:29 UTC.
+    expect(ics).toContain('DTSTART:20260913T132900Z\r\n');
   });
 
   it('ventanaDeConfirmacionAbierta usa "hoy <= fecha_cierre" (RN-2, inclusive)', () => {
@@ -167,5 +202,137 @@ describe('Etapa 4: Flujo de éxito contra base de datos real', () => {
     const res = await request(app).post(`/confirm/${token}`).send({ respuesta: 'Sí' });
     expect(res.status).toBe(400);
     expect(res.text).toContain('Confirmación Cerrada');
+  });
+});
+
+describe('Etapa 4: RN-10 - Tope de notificaciones de respuesta', () => {
+  let agent: ReturnType<typeof request.agent>;
+  let servicioId: number;
+
+  beforeAll(async () => {
+    const app = createApp();
+    agent = request.agent(app);
+    await agent.post('/api/login').send({ password: config.coordinadorPassword });
+
+    const servicio = await agent.post('/api/services').send({
+      fecha_servicio: addDays(400),
+      hora_servicio: '09:00',
+      fecha_cierre_confirmacion: addDays(399),
+      tipo: 'Regular',
+    });
+    servicioId = servicio.body.data.id;
+  });
+
+  async function crearParticipante(sufijo: string) {
+    const res = await agent.post('/api/participants').send({
+      nombre: 'Prueba',
+      primer_apellido: 'EtapaCuatroRN10',
+      correo: `prueba.etapa4.rn10.${sufijo}.${Date.now()}@ejemplo-sintetico.test`,
+      grupo_id: 1,
+    });
+    return res.body.data.id as number;
+  }
+
+  it('Notifica en el alta y en el primer cambio; deja de notificar del segundo cambio en adelante', async () => {
+    const participanteId = await crearParticipante('tope');
+
+    const alta = await RespuestaModel.registrar(participanteId, servicioId, 'Sí');
+    expect(alta).toEqual({ respuesta: 'Sí', debeNotificar: true, esCambio: false });
+
+    const cambio1 = await RespuestaModel.registrar(participanteId, servicioId, 'No');
+    expect(cambio1).toEqual({ respuesta: 'No', debeNotificar: true, esCambio: true });
+
+    const cambio2 = await RespuestaModel.registrar(participanteId, servicioId, 'Sí');
+    expect(cambio2).toEqual({ respuesta: 'Sí', debeNotificar: false, esCambio: true });
+
+    const cambio3 = await RespuestaModel.registrar(participanteId, servicioId, 'No');
+    expect(cambio3).toEqual({ respuesta: 'No', debeNotificar: false, esCambio: true });
+  });
+
+  it('Repetir la misma respuesta no cuenta como cambio ni notifica de nuevo', async () => {
+    const participanteId = await crearParticipante('repetido');
+
+    const alta = await RespuestaModel.registrar(participanteId, servicioId, 'Sí');
+    expect(alta.debeNotificar).toBe(true);
+
+    const repetir = await RespuestaModel.registrar(participanteId, servicioId, 'Sí');
+    expect(repetir).toEqual({ respuesta: 'Sí', debeNotificar: false, esCambio: false });
+  });
+});
+
+// `establecerMailerDePruebas` intercepta el mailer real de `confirmController.submitForm`
+// (obtenerMailerActivo) solo bajo NODE_ENV=test, para verificar el acuse de recibo sin
+// depender de credenciales de Gmail ni de red real. Se restaura a null tras cada prueba.
+describe('Etapa 4: RN-10 - Acuse de recibo por correo (mailer)', () => {
+  let app: ReturnType<typeof createApp>;
+  let agent: ReturnType<typeof request.agent>;
+
+  class MailerEspia implements Mailer {
+    llamadas: { to: string; subject: string }[] = [];
+    async enviar(correo: { to: string; subject: string }): Promise<boolean> {
+      this.llamadas.push({ to: correo.to, subject: correo.subject });
+      return true;
+    }
+  }
+
+  beforeAll(async () => {
+    app = createApp();
+    agent = request.agent(app);
+    await agent.post('/api/login').send({ password: config.coordinadorPassword });
+  });
+
+  afterEach(() => {
+    establecerMailerDePruebas(null);
+  });
+
+  async function crearParticipanteYServicio(correo: string) {
+    const participante = await agent.post('/api/participants').send({
+      nombre: 'Prueba',
+      primer_apellido: 'EtapaCuatroAcuse',
+      correo,
+      grupo_id: 1,
+    });
+    const servicio = await agent.post('/api/services').send({
+      fecha_servicio: addDays(400),
+      hora_servicio: '09:00',
+      fecha_cierre_confirmacion: addDays(399),
+      tipo: 'Regular',
+    });
+    return { participanteId: participante.body.data.id as number, servicioId: servicio.body.data.id as number };
+  }
+
+  it('Dispara un correo de acuse de recibo al confirmar por primera vez', async () => {
+    const correo = `prueba.etapa4.acuse.${Date.now()}@ejemplo-sintetico.test`;
+    const { participanteId, servicioId } = await crearParticipanteYServicio(correo);
+    const token = generarToken(participanteId, servicioId);
+
+    const espia = new MailerEspia();
+    establecerMailerDePruebas(espia);
+
+    const res = await request(app).post(`/confirm/${token}`).send({ respuesta: 'Sí' });
+    expect(res.status).toBe(200);
+
+    // El envío es "fire and forget" (no bloquea la respuesta HTTP): esperar un tick para que
+    // la promesa interna del mailer se resuelva antes de verificar la llamada.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(espia.llamadas).toEqual([{ to: correo, subject: 'Confirmación de asistencia registrada' }]);
+  });
+
+  it('No envía un segundo acuse si se repite la misma respuesta (RN-10, sin cambio)', async () => {
+    const correo = `prueba.etapa4.acuse-repetido.${Date.now()}@ejemplo-sintetico.test`;
+    const { participanteId, servicioId } = await crearParticipanteYServicio(correo);
+    const token = generarToken(participanteId, servicioId);
+
+    await request(app).post(`/confirm/${token}`).send({ respuesta: 'Sí' }); // alta, sin espía instalado
+
+    const espia = new MailerEspia();
+    establecerMailerDePruebas(espia);
+
+    const res = await request(app).post(`/confirm/${token}`).send({ respuesta: 'Sí' }); // repetir misma respuesta
+    expect(res.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(espia.llamadas).toEqual([]);
   });
 });

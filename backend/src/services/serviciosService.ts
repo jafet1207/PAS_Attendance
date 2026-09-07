@@ -119,6 +119,25 @@ async function contarRespuestasPorTodosLosServicios(): Promise<Map<number, numbe
   return new Map(res.rows.map((row) => [row.servicio_id, parseInt(row.count, 10)]));
 }
 
+/**
+ * RN-4: orden de atención del dashboard. Extraída como función pura (no depende de la base de
+ * datos) para poder probarla de forma determinista, y reutilizada por el `.sort()` de
+ * `obtenerServiciosEnriquecidos`.
+ */
+export function compararServiciosPorPrioridad(
+  a: Pick<ServicioEnriquecido, 'estado' | 'fecha_servicio'>,
+  b: Pick<ServicioEnriquecido, 'estado' | 'fecha_servicio'>
+): number {
+  const prioA = PRIORIDAD_ESTADO[a.estado] ?? 99;
+  const prioB = PRIORIDAD_ESTADO[b.estado] ?? 99;
+  if (prioA !== prioB) {
+    return prioA - prioB;
+  }
+  const dateA = new Date(a.fecha_servicio).getTime();
+  const dateB = new Date(b.fecha_servicio).getTime();
+  return dateA - dateB;
+}
+
 export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecido[]> {
   const servicios = await ServicioModel.getAll();
   const hoy = new Date();
@@ -156,16 +175,7 @@ export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecid
     serviciosConInfo.push(servicioEnriquecido);
   }
 
-  serviciosConInfo.sort((a, b) => {
-    const prioA = PRIORIDAD_ESTADO[a.estado] ?? 99;
-    const prioB = PRIORIDAD_ESTADO[b.estado] ?? 99;
-    if (prioA !== prioB) {
-      return prioA - prioB;
-    }
-    const dateA = new Date(a.fecha_servicio).getTime();
-    const dateB = new Date(b.fecha_servicio).getTime();
-    return dateA - dateB;
-  });
+  serviciosConInfo.sort(compararServiciosPorPrioridad);
 
   return serviciosConInfo;
 }
@@ -229,28 +239,33 @@ export async function obtenerParticipantesConEstado(
     respuestasRes.rows.map((r) => [r.participante_id, r.respuesta])
   );
 
-  const resultado: ParticipanteConEstado[] = [];
-  for (const p of participantesRes.rows) {
-    const ultimoEnvioRes = await query<{ timestamp: Date; resultado: 'exitoso' | 'fallido' }>(
-      `
-      SELECT timestamp, resultado FROM Intento_Envio
-      WHERE participante_id = $1 AND servicio_id = $2
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `,
-      [p.id, servicioId]
-    );
+  // Trae el último intento de cada participante en una sola consulta (DISTINCT ON + ORDER BY
+  // timestamp DESC) en vez de una consulta por participante, para no repetir el mismo N+1 que
+  // se corrigió en `obtenerServiciosEnriquecidos`.
+  const ultimosEnviosRes = await query<{
+    participante_id: number;
+    timestamp: Date;
+    resultado: 'exitoso' | 'fallido';
+  }>(
+    `
+    SELECT DISTINCT ON (participante_id) participante_id, timestamp, resultado
+    FROM Intento_Envio
+    WHERE servicio_id = $1
+    ORDER BY participante_id, timestamp DESC
+  `,
+    [servicioId]
+  );
+  const ultimoEnvioPorParticipante = new Map(
+    ultimosEnviosRes.rows.map((r) => [r.participante_id, { timestamp: r.timestamp, resultado: r.resultado }])
+  );
 
-    resultado.push({
-      id: p.id,
-      nombreCompleto: construirNombreCompleto(p.nombre, p.primer_apellido, p.segundo_apellido),
-      correo: p.correo,
-      respuesta: respuestasPorParticipante.get(p.id) ?? null,
-      ultimoEnvio: ultimoEnvioRes.rows[0] || null,
-    });
-  }
-
-  return resultado;
+  return participantesRes.rows.map((p) => ({
+    id: p.id,
+    nombreCompleto: construirNombreCompleto(p.nombre, p.primer_apellido, p.segundo_apellido),
+    correo: p.correo,
+    respuesta: respuestasPorParticipante.get(p.id) ?? null,
+    ultimoEnvio: ultimoEnvioPorParticipante.get(p.id) ?? null,
+  }));
 }
 
 export interface IntentoEnvioConParticipante {

@@ -68,9 +68,15 @@ CREATE TABLE IF NOT EXISTS Intento_Envio (
     resultado TEXT NOT NULL CHECK (resultado IN ('exitoso', 'fallido'))
 );
 
+CREATE TABLE IF NOT EXISTS Recordatorios_Lock (
+    id INTEGER PRIMARY KEY,
+    bloqueado_desde TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_respuesta_participante_servicio ON Respuesta(participante_id, servicio_id);
 CREATE INDEX IF NOT EXISTS idx_intentos_servicio ON Intento_Envio(servicio_id);
 CREATE INDEX IF NOT EXISTS idx_intentos_participante_servicio ON Intento_Envio(participante_id, servicio_id, resultado);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_intento_envio_unico ON Intento_Envio(participante_id, servicio_id, numero_recordatorio);
 ```
 
 ---
@@ -86,6 +92,15 @@ CREATE INDEX IF NOT EXISTS idx_intentos_participante_servicio ON Intento_Envio(p
 
 ### DM-3: Tokens de Confirmación HMAC/JWT con Vigencia de 7 Días
 - **Razón:** Los enlaces de confirmación enviados a los correos viajan firmados criptográficamente conteniendo `{ p: participanteId, s: servicioId }` con expiración automática de 7 días (`TOKEN_MAX_AGE_SEGUNDOS = 604800`).
+
+### DM-4: Lock de una Fila (`Recordatorios_Lock`) en vez de Advisory Lock de Postgres
+- **Razón:** `GET`/`POST /api/enviar-recordatorios` debe serializarse para que dos invocaciones concurrentes (doble disparo de cron, cron y panel a la vez, reintento de red) no envíen recordatorios duplicados ni excedan el tope de 3 envíos exitosos de RN-6.
+- **Por qué no `pg_advisory_lock`:** el connection string de Neon usado por la aplicación es el endpoint *pooled* (PgBouncer en modo transacción), que no garantiza que un advisory lock de sesión persista entre sentencias del mismo cliente lógico. Un `UPDATE` atómico de una sola fila (`Recordatorios_Lock`) no depende de la identidad de la conexión y funciona igual bajo cualquier modo de pooling.
+- **Auto-recuperación:** un lock más viejo que 10 minutos se considera abandonado (proceso caído antes de liberarlo) y puede volver a adquirirse.
+- Como defensa adicional, `Intento_Envio` tiene un índice único sobre `(participante_id, servicio_id, numero_recordatorio)` con `ON CONFLICT DO NOTHING` en el `INSERT`, para que una eventual carrera no duplique la fila de auditoría.
+
+### DM-5: `APP_BASE_URL` para los Enlaces de Correo
+- **Razón:** el cuerpo HTML de los recordatorios (`recordatoriosService.ts`) necesita construir URLs absolutas hacia `/confirm/:token` y sus acciones rápidas (`/si`, `/no`). Se agregó la variable de entorno `APP_BASE_URL` (por defecto `http://localhost:5000`) en vez de hardcodear el host, siguiendo el mismo patrón de configuración por entorno que `GMAIL_USER`/`CRON_SECRET`.
 
 ---
 

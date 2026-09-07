@@ -23,4 +23,17 @@ export class HistorialParticipanteModel {
       [participanteId, accion, comentario]
     );
   }
+
+  static async getUltimoPorParticipante(participanteId: number): Promise<HistorialParticipante | null> {
+    const res = await query<HistorialParticipante>(
+      `
+      SELECT * FROM Historial_Participante
+      WHERE participante_id = $1
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `,
+      [participanteId]
+    );
+    return res.rows[0] || null;
+  }
 }

@@ -7,5 +7,5 @@
 | **Etapa 2** | Servicios, cálculo de estados y Frontend Dashboard | Fullstack | ✅ Completado | `backend/tests/etapa2.test.ts` |
 | **Etapa 3** | Participantes, roles y Frontend Personas | Fullstack | ✅ Completado | `backend/tests/etapa3.test.ts` |
 | **Etapa 4** | Tokens y Confirmación Pública Web | Backend/Público | ✅ Completado | `backend/tests/etapa4.test.ts` |
-| **Etapa 5** | Recordatorios Automáticos y Servicio Mailer | Backend/Servicio | ⏳ Pendiente | `backend/tests/etapa5.test.ts` |
+| **Etapa 5** | Recordatorios Automáticos y Servicio Mailer | Backend/Servicio | ✅ Completado | `backend/tests/etapa5.test.ts` |
 | **Etapa 6** | Integración Fullstack Final y Documentación | Fullstack | ⏳ Pendiente | Suite completa Vitest + Build E2E |

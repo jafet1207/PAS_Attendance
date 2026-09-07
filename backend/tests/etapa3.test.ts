@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
 import { generarToken } from '../src/tokens/index.js';
+import { HistorialParticipanteModel } from '../src/models/historialParticipante.model.js';
 
 describe('Etapa 3: Servidores y roles', () => {
   let app: ReturnType<typeof createApp>;
@@ -206,6 +207,34 @@ describe('Etapa 3: Flujo de éxito contra base de datos real', () => {
     expect(res.body.data).toEqual({ id: createdParticipantId, email: nuevoCorreo });
   });
 
+  it('PATCH /api/participants/:id/email retorna 404 si el participante no existe', async () => {
+    const res = await agent
+      .patch('/api/participants/999999999/email')
+      .send({ correo: `no-existe.${Date.now()}@ejemplo-sintetico.test` });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /api/participants/:id/email rechaza un correo ya usado por otro participante (409)', async () => {
+    const otro = await agent.post('/api/participants').send({
+      nombre: 'Prueba',
+      primer_apellido: 'EtapaTresConflicto',
+      correo: `prueba.etapa3.conflicto.${Date.now()}@ejemplo-sintetico.test`,
+      grupo_id: 1,
+    });
+    expect(otro.status).toBe(201);
+
+    const res = await agent
+      .patch(`/api/participants/${createdParticipantId}/email`)
+      .send({ correo: otro.body.data.email });
+
+    expect(res.status).toBe(409);
+  });
+
+  it('PATCH /api/participants/:id/status retorna 404 si el participante no existe', async () => {
+    const res = await agent.patch('/api/participants/999999999/status').send({ activo: false });
+    expect(res.status).toBe(404);
+  });
+
   it('GET /api/participants marca a los participantes como activos por defecto', async () => {
     const res = await agent.get('/api/participants');
     const creado = res.body.data.find((p: { id: number }) => p.id === createdParticipantId);
@@ -282,6 +311,13 @@ describe('Etapa 3: Flujo de éxito contra base de datos real', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual({ id: participanteConfirmadoId, active: false });
+    });
+
+    it('Registra la desactivación en Historial_Participante con la acción y el comentario', async () => {
+      const historial = await HistorialParticipanteModel.getUltimoPorParticipante(participanteConfirmadoId);
+      expect(historial).not.toBeNull();
+      expect(historial?.accion).toBe('Desactivado');
+      expect(historial?.comentario).toBe('Renunció al equipo de servidores esta semana.');
     });
 
     it('El servidor desactivado deja de contar como convocado en el servicio', async () => {

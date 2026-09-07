@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { decodificarToken } from '../tokens/index.js';
+import { obtenerMailerActivo } from '../mailer/index.js';
 import { ParticipanteModel } from '../models/participante.model.js';
 import { ServicioModel } from '../models/servicio.model.js';
 import { RespuestaModel } from '../models/respuesta.model.js';
@@ -11,7 +12,7 @@ import { formatDateYMD, formatearNombreServicio, construirNombreCompleto } from 
 // provenga de un campo de texto libre (ej. el nombre del participante, capturado en la Etapa 3
 // sin sanitizar) debe escaparse antes de interpolarse aquí, o queda expuesto a XSS almacenado
 // contra cualquier persona que abra su enlace de confirmación.
-function escapeHtml(valor: string): string {
+export function escapeHtml(valor: string): string {
   return valor
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -29,9 +30,25 @@ export function ventanaDeConfirmacionAbierta(fechaCierreStr: string): boolean {
   return hoyStr <= fechaCierreStr;
 }
 
+/**
+ * Redondea un buffer expresado en horas al minuto más cercano (también en horas). Única fuente
+ * de verdad del redondeo: la usan tanto el texto mostrado (`calcularHoraLlegada`) como el
+ * adjunto de calendario `.ics` (`recordatoriosService.generarIcs`), para que ambos usen
+ * exactamente el mismo instante de llegada incluso si algún grupo llega a configurarse con un
+ * buffer que no sea ya un número entero de minutos (ej. 1.51h).
+ */
+export function redondearBufferAMinutos(horas: number): number {
+  return Math.round(horas * 60) / 60;
+}
+
+/** RN-8: horas de anticipación de llegada según el grupo (1.5 por defecto si no está definido). */
+export function obtenerBufferLlegadaHoras(grupoNombre: string): number {
+  return redondearBufferAMinutos(BUSINESS_CONSTANTS.BUFFER_LLEGADA_HORAS[grupoNombre] || 1.5);
+}
+
 export function calcularHoraLlegada(horaServicioStr: string, grupoNombre: string): string {
   const [h, m] = (horaServicioStr.slice(0, 5) || '00:00').split(':').map((x) => parseInt(x, 10));
-  const bufferHoras = BUSINESS_CONSTANTS.BUFFER_LLEGADA_HORAS[grupoNombre] || 1.5;
+  const bufferHoras = obtenerBufferLlegadaHoras(grupoNombre);
   const totalMinutos = (h || 0) * 60 + (m || 0) - Math.round(bufferHoras * 60);
   const minutosNormalizados = (totalMinutos + 24 * 60) % (24 * 60);
   const llegadaH = Math.floor(minutosNormalizados / 60);
@@ -316,6 +333,7 @@ interface ContextoConfirmacion {
   participanteId: number;
   servicioId: number;
   participanteNombre: string;
+  participanteCorreo: string;
   grupoNombre: string;
   servicioNombre: string;
   fechaServicioStr: string;
@@ -366,6 +384,7 @@ async function resolverContexto(
         participante.segundo_apellido
       )
     ),
+    participanteCorreo: participante.correo,
     grupoNombre,
     servicioNombre,
     fechaServicioStr,
@@ -459,10 +478,31 @@ export class ConfirmController {
       normalizada
     );
 
-    // RN-10: cuando resultado.debeNotificar es true, corresponde enviar un correo de acuse
-    // de recibo (alta o cambio de respuesta). El envío real se conecta en la Etapa 5, cuando
-    // exista el módulo de correo (backend/src/mailer/index.ts); por ahora la regla de tope de
-    // notificaciones ya queda aplicada y registrada en Respuesta.notificaciones_enviadas.
+    // RN-10: cuando resultado.debeNotificar es true, se envía un correo de acuse de recibo
+    // (alta o cambio de respuesta). Es asíncrono/"fire and forget": no bloquea la respuesta
+    // HTML al participante, y un fallo de envío no debe romper la confirmación ya registrada.
+    if (resultado.debeNotificar && contexto.participanteCorreo) {
+      const htmlAcuse = renderConfirmacionExitosaHtml(
+        contexto.participanteNombre,
+        contexto.servicioNombre,
+        contexto.fechaServicioStr,
+        contexto.horaServicioStr,
+        contexto.horaLlegadaStr,
+        contexto.grupoNombre,
+        resultado.respuesta,
+        contexto.fechaCierreStr,
+        resultado.esCambio
+      );
+      obtenerMailerActivo()
+        .enviar({
+          to: contexto.participanteCorreo,
+          subject: resultado.esCambio ? 'Actualizaste tu respuesta de asistencia' : 'Confirmación de asistencia registrada',
+          html: htmlAcuse,
+        })
+        .catch((error) => {
+          console.error('[ConfirmController.submitForm] Error al enviar el acuse de recibo', error);
+        });
+    }
 
     res
       .status(200)
