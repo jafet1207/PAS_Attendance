@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Pencil, Plus, Search, Users, X } from 'lucide-react'
+import Badge from '../components/common/Badge'
 import Button from '../components/common/Button'
 import ErrorState from '../components/common/ErrorState'
 import Modal from '../components/common/Modal'
@@ -7,7 +8,14 @@ import PageContainer from '../components/layout/PageContainer'
 import PageHeader from '../components/layout/PageHeader'
 import Skeleton from '../components/common/Skeleton'
 import { ModernSelect } from '../components/form/ModernFields'
-import { createParticipant, getGroups, getParticipants, updateParticipantRole } from '../services/servicesApi'
+import {
+  createParticipant,
+  getGroups,
+  getParticipants,
+  updateParticipantEmail,
+  updateParticipantRole,
+  updateParticipantStatus,
+} from '../services/servicesApi'
 import styles from './PeoplePage.module.css'
 
 const emptyForm = { nombre: '', primer_apellido: '', segundo_apellido: '', correo: '', grupo_id: '' }
@@ -25,6 +33,12 @@ export default function PeoplePage() {
   const [editingId, setEditingId] = useState(null)
   const [roleId, setRoleId] = useState('')
   const [updatingRole, setUpdatingRole] = useState(false)
+  const [emailEditingId, setEmailEditingId] = useState(null)
+  const [emailValue, setEmailValue] = useState('')
+  const [updatingEmail, setUpdatingEmail] = useState(false)
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [commentPromptId, setCommentPromptId] = useState(null)
+  const [commentText, setCommentText] = useState('')
 
   function load() {
     setError(null)
@@ -74,7 +88,9 @@ export default function PeoplePage() {
     setFormErrors([])
     try {
       const participant = await createParticipant(form)
-      setPeople((current) => [...current, participant].sort((a, b) => a.name.localeCompare(b.name, 'es')))
+      setPeople((current) =>
+        [...current, { ...participant, active: true }].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      )
       closeModal()
     } catch (requestError) {
       setFormErrors(requestError.message ? [requestError.message] : ['No fue posible guardar la persona.'])
@@ -103,6 +119,59 @@ export default function PeoplePage() {
     } finally {
       setUpdatingRole(false)
     }
+  }
+
+  function startEmailEdit(person) {
+    setEmailEditingId(person.id)
+    setEmailValue(person.email)
+    setError(null)
+  }
+
+  async function saveEmail(personId) {
+    setUpdatingEmail(true)
+    setError(null)
+    try {
+      const updated = await updateParticipantEmail(personId, emailValue)
+      setPeople((current) =>
+        current.map((person) => (person.id === personId ? { ...person, email: updated.email } : person))
+      )
+      setEmailEditingId(null)
+    } catch (requestError) {
+      setError(requestError.message || 'No fue posible actualizar el correo.')
+    } finally {
+      setUpdatingEmail(false)
+    }
+  }
+
+  async function changeStatus(person, activo, comentario) {
+    setStatusUpdatingId(person.id)
+    setError(null)
+    try {
+      const updated = await updateParticipantStatus(person.id, activo, comentario)
+      setPeople((current) =>
+        current.map((p) => (p.id === person.id ? { ...p, active: updated.active } : p))
+      )
+      setCommentPromptId(null)
+      setCommentText('')
+    } catch (requestError) {
+      if (!activo && requestError.body?.requiresComment) {
+        setCommentPromptId(person.id)
+      } else {
+        setError(requestError.message || 'No fue posible actualizar el estado del servidor.')
+      }
+    } finally {
+      setStatusUpdatingId(null)
+    }
+  }
+
+  function confirmDeactivateWithComment(person) {
+    if (!commentText.trim()) return
+    changeStatus(person, false, commentText.trim())
+  }
+
+  function cancelCommentPrompt() {
+    setCommentPromptId(null)
+    setCommentText('')
   }
 
   if (error && people === null) return <PageContainer><ErrorState message={error} onRetry={load} /></PageContainer>
@@ -148,34 +217,92 @@ export default function PeoplePage() {
 
         <div className={styles.rows}>
           {visiblePeople.map((person) => (
-            <article className={styles.row} key={person.id}>
+            <article className={`${styles.row} ${!person.active ? styles.rowInactive : ''}`} key={person.id}>
               <div className={styles.avatar}>
                 {person.name.split(' ').slice(0, 2).map((part) => part[0]).join('')}
               </div>
               <div>
-                <strong>{person.name}</strong>
-                <span>{person.email}</span>
-              </div>
-              {editingId === person.id ? (
-                <div className={styles.roleEditor}>
-                  <div className={styles.roleEditorSelect}>
-                    <ModernSelect ariaLabel={`Rol de ${person.name}`} value={roleId} onChange={setRoleId} options={groupOptions} placeholder="Selecciona un grupo" />
+                <div className={styles.nameRow}>
+                  <strong>{person.name}</strong>
+                  {!person.active && <Badge tone="danger">Inactivo</Badge>}
+                </div>
+                {emailEditingId === person.id ? (
+                  <div className={styles.emailEditor}>
+                    <input
+                      type="email"
+                      value={emailValue}
+                      onChange={(event) => setEmailValue(event.target.value)}
+                      autoFocus
+                    />
+                    <button aria-label="Guardar correo" className={styles.saveRole} disabled={updatingEmail} onClick={() => saveEmail(person.id)} type="button">
+                      <Check size={16} />
+                    </button>
+                    <button aria-label="Cancelar edición de correo" className={styles.cancelRole} disabled={updatingEmail} onClick={() => setEmailEditingId(null)} type="button">
+                      <X size={16} />
+                    </button>
                   </div>
-                  <button aria-label="Guardar rol" className={styles.saveRole} disabled={updatingRole} onClick={() => saveRole(person.id)} type="button">
-                    <Check size={16} />
-                  </button>
-                  <button aria-label="Cancelar cambio de rol" className={styles.cancelRole} disabled={updatingRole} onClick={() => setEditingId(null)} type="button">
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : (
-                <div className={styles.roleActions}>
-                  <span className={styles.group}>{person.group.name}</span>
-                  <button className={styles.changeRole} onClick={() => startRoleEdit(person)} type="button">
-                    <Pencil size={15} /> Cambiar rol
-                  </button>
-                </div>
-              )}
+                ) : (
+                  <span className={styles.emailRow}>
+                    {person.email}
+                    <button aria-label={`Editar correo de ${person.name}`} className={styles.changeEmail} onClick={() => startEmailEdit(person)} type="button">
+                      <Pencil size={13} />
+                    </button>
+                  </span>
+                )}
+                {commentPromptId === person.id && (
+                  <div className={styles.commentPrompt}>
+                    <p>
+                      Este servidor confirmó asistencia a un servicio próximo. Justifica por qué lo desactivas:
+                    </p>
+                    <textarea
+                      value={commentText}
+                      onChange={(event) => setCommentText(event.target.value)}
+                      placeholder="Motivo de la desactivación"
+                      autoFocus
+                    />
+                    <div className={styles.commentActions}>
+                      <button type="button" onClick={cancelCommentPrompt}>Cancelar</button>
+                      <Button
+                        type="button"
+                        disabled={statusUpdatingId === person.id || !commentText.trim()}
+                        onClick={() => confirmDeactivateWithComment(person)}
+                      >
+                        Confirmar desactivación
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className={styles.actions}>
+                {editingId === person.id ? (
+                  <div className={styles.roleEditor}>
+                    <div className={styles.roleEditorSelect}>
+                      <ModernSelect ariaLabel={`Rol de ${person.name}`} value={roleId} onChange={setRoleId} options={groupOptions} placeholder="Selecciona un grupo" />
+                    </div>
+                    <button aria-label="Guardar rol" className={styles.saveRole} disabled={updatingRole} onClick={() => saveRole(person.id)} type="button">
+                      <Check size={16} />
+                    </button>
+                    <button aria-label="Cancelar cambio de rol" className={styles.cancelRole} disabled={updatingRole} onClick={() => setEditingId(null)} type="button">
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className={styles.roleActions}>
+                    <span className={styles.group}>{person.group.name}</span>
+                    <button className={styles.changeRole} onClick={() => startRoleEdit(person)} type="button">
+                      <Pencil size={15} /> Cambiar rol
+                    </button>
+                  </div>
+                )}
+                <button
+                  className={person.active ? styles.deactivateAction : styles.reactivateAction}
+                  disabled={statusUpdatingId === person.id}
+                  onClick={() => changeStatus(person, !person.active, null)}
+                  type="button"
+                >
+                  {person.active ? 'Desactivar' : 'Reactivar'}
+                </button>
+              </div>
             </article>
           ))}
           {visiblePeople.length === 0 && <p className={styles.empty}>No hay servidores que coincidan con esta búsqueda.</p>}

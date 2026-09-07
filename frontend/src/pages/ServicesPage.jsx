@@ -3,7 +3,6 @@ import { Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import PageContainer from '../components/layout/PageContainer'
 import PageHeader from '../components/layout/PageHeader'
-import ServicesStats from '../components/services/ServicesStats'
 import ServicesToolbar from '../components/services/ServicesToolbar'
 import ServicesList from '../components/services/ServicesList'
 import Skeleton from '../components/common/Skeleton'
@@ -71,7 +70,6 @@ export default function ServicesPage() {
 
       {!error && services !== null && (
         <div className={styles.body}>
-          <ServicesStats services={services} />
           <ServicesToolbar
             search={search}
             onSearchChange={setSearch}

@@ -1,23 +1,120 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react'
 import styles from './ModernFields.module.css'
 
-function useOutsideClose(ref, close) {
+function useOutsideClose(refs, close) {
   useEffect(() => {
-    function onPointerDown(event) { if (ref.current && !ref.current.contains(event.target)) close() }
+    function onPointerDown(event) {
+      const insideAny = refs.some((ref) => ref.current && ref.current.contains(event.target))
+      if (!insideAny) close()
+    }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [ref, close])
+  }, [refs, close])
 }
 
+// El menú se renderiza en un portal (fuera del árbol DOM del control) y se posiciona con
+// `position: fixed` a partir del rectángulo real del trigger. Así no lo recorta ningún
+// ancestro con overflow (por ejemplo, un Modal), que es lo que causaba que el combo quedara
+// cortado y obligara a hacer scroll dentro del modal para verlo completo.
 export function ModernSelect({ ariaLabel, options, placeholder, value, onChange, disabled = false }) {
   const [open, setOpen] = useState(false)
+  const [menuRect, setMenuRect] = useState(null)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const root = useRef(null)
-  useOutsideClose(root, () => setOpen(false))
+  const menuRef = useRef(null)
+  const instanceId = useId()
+  useOutsideClose([root, menuRef], () => setOpen(false))
   const selected = options.find((option) => String(option.value) === String(value))
+  const selectedIndex = options.findIndex((option) => String(option.value) === String(value))
+
+  function openMenu() {
+    if (root.current) {
+      const rect = root.current.getBoundingClientRect()
+      setMenuRect({ top: rect.bottom + 6, left: rect.left, width: rect.width })
+    }
+    setHighlightedIndex(selectedIndex >= 0 ? selectedIndex : 0)
+    setOpen(true)
+  }
+
+  function closeMenu() {
+    setOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  function selectOption(option) {
+    onChange(String(option.value))
+    closeMenu()
+  }
+
+  // Navegación por teclado tipo <select> nativo: flechas mueven el resaltado, Enter/Espacio
+  // confirman, Escape cierra. El foco se queda en el botón (el menú vive en un portal), así
+  // que el resaltado se controla por estado y se expone por aria-activedescendant.
+  function handleTriggerKeyDown(event) {
+    if (disabled) return
+    if (!open) {
+      if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+        event.preventDefault()
+        openMenu()
+      }
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setHighlightedIndex((current) => (current + 1) % options.length)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setHighlightedIndex((current) => (current - 1 + options.length) % options.length)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setHighlightedIndex(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setHighlightedIndex(options.length - 1)
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      if (options[highlightedIndex]) selectOption(options[highlightedIndex])
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      closeMenu()
+    }
+  }
+
+  useEffect(() => {
+    if (!open || highlightedIndex < 0) return
+    menuRef.current?.querySelector(`#${instanceId}-option-${highlightedIndex}`)?.scrollIntoView({ block: 'nearest' })
+  }, [open, highlightedIndex, instanceId])
+
   return <div className={styles.control} ref={root}>
-    <button aria-expanded={open} aria-haspopup="listbox" aria-label={ariaLabel} className={styles.trigger} disabled={disabled} onClick={() => setOpen((current) => !current)} type="button"><span className={selected ? '' : styles.placeholder}>{selected?.label ?? placeholder}</span><ChevronDown aria-hidden size={18} /></button>
-    {open && <div aria-label={ariaLabel} className={styles.menu} role="listbox">{options.map((option) => <button aria-selected={String(option.value) === String(value)} className={styles.option} key={option.value} onClick={() => { onChange(String(option.value)); setOpen(false) }} role="option" type="button"><span>{option.label}</span>{String(option.value) === String(value) && <Check size={17} />}</button>)}</div>}
+    <button
+      aria-activedescendant={open && highlightedIndex >= 0 ? `${instanceId}-option-${highlightedIndex}` : undefined}
+      aria-expanded={open}
+      aria-haspopup="listbox"
+      aria-label={ariaLabel}
+      className={styles.trigger}
+      disabled={disabled}
+      onClick={() => (open ? closeMenu() : openMenu())}
+      onKeyDown={handleTriggerKeyDown}
+      type="button"
+    ><span className={selected ? '' : styles.placeholder}>{selected?.label ?? placeholder}</span><ChevronDown aria-hidden size={18} /></button>
+    {open && menuRect && createPortal(
+      <div aria-label={ariaLabel} className={styles.menu} ref={menuRef} role="listbox" style={{ position: 'fixed', top: menuRect.top, left: menuRect.left, width: menuRect.width }}>
+        {options.map((option, index) => (
+          <button
+            aria-selected={String(option.value) === String(value)}
+            className={`${styles.option} ${index === highlightedIndex ? styles.optionHighlighted : ''}`}
+            id={`${instanceId}-option-${index}`}
+            key={option.value}
+            onClick={() => selectOption(option)}
+            onMouseEnter={() => setHighlightedIndex(index)}
+            role="option"
+            type="button"
+          ><span>{option.label}</span>{String(option.value) === String(value) && <Check size={17} />}</button>
+        ))}
+      </div>,
+      document.body
+    )}
   </div>
 }
 
@@ -31,7 +128,7 @@ export function ModernDateField({ ariaLabel, value, onChange, disabled = false, 
   const [open, setOpen] = useState(false)
   const [cursor, setCursor] = useState(() => parseDate(value) ?? new Date())
   const root = useRef(null)
-  useOutsideClose(root, () => setOpen(false))
+  useOutsideClose([root], () => setOpen(false))
   const days = useMemo(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
     const startOffset = (first.getDay() + 6) % 7

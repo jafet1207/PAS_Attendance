@@ -7,6 +7,7 @@ export interface Participante {
   segundo_apellido: string | null;
   correo: string;
   grupo_id: number;
+  activo: boolean;
 }
 
 export class ParticipanteModel {
@@ -45,5 +46,31 @@ export class ParticipanteModel {
       id,
     ]);
     return (res.rowCount ?? 0) > 0;
+  }
+
+  static async updateCorreo(id: number, correo: string): Promise<boolean> {
+    const res = await query('UPDATE Participante SET correo = $1 WHERE id = $2', [correo, id]);
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  static async updateActivo(id: number, activo: boolean): Promise<boolean> {
+    const res = await query('UPDATE Participante SET activo = $1 WHERE id = $2', [activo, id]);
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  /** RN interna: ¿este participante confirmó "Sí" a algún servicio cuya fecha aún no pasa? */
+  static async tieneConfirmacionProxima(id: number): Promise<boolean> {
+    const res = await query<{ count: string }>(
+      `
+      SELECT COUNT(*) as count
+      FROM Respuesta r
+      JOIN Servicio s ON r.servicio_id = s.id
+      WHERE r.participante_id = $1
+        AND r.respuesta = 'Sí'
+        AND s.fecha_servicio >= CURRENT_DATE
+    `,
+      [id]
+    );
+    return parseInt(res.rows[0]?.count || '0', 10) > 0;
   }
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
+import { generarToken } from '../src/tokens/index.js';
 
 describe('Etapa 3: Servidores y roles', () => {
   let app: ReturnType<typeof createApp>;
@@ -29,6 +30,16 @@ describe('Etapa 3: Servidores y roles', () => {
 
     it('PATCH /api/participants/:id/role sin autenticación retorna 401', async () => {
       const res = await request(app).patch('/api/participants/1/role').send({ grupo_id: 1 });
+      expect(res.status).toBe(401);
+    });
+
+    it('PATCH /api/participants/:id/email sin autenticación retorna 401', async () => {
+      const res = await request(app).patch('/api/participants/1/email').send({ correo: 'x@test.com' });
+      expect(res.status).toBe(401);
+    });
+
+    it('PATCH /api/participants/:id/status sin autenticación retorna 401', async () => {
+      const res = await request(app).patch('/api/participants/1/status').send({ activo: false });
       expect(res.status).toBe(401);
     });
   });
@@ -103,6 +114,17 @@ describe('Etapa 3: Servidores y roles', () => {
       expect(res.body).toEqual({ error: 'Selecciona un rol válido.' });
     });
   });
+
+  describe('Validaciones de edición de correo (PATCH /api/participants/:id/email)', () => {
+    it('Rechaza si el correo no es válido', async () => {
+      const agent = request.agent(app);
+      await agent.post('/api/login').send({ password: config.coordinadorPassword });
+
+      const res = await agent.patch('/api/participants/1/email').send({ correo: 'no-es-un-correo' });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: 'Ingresa un correo válido.' });
+    });
+  });
 });
 
 // Estas pruebas insertan un participante real contra TEST_DATABASE_URL (misma base de
@@ -172,5 +194,103 @@ describe('Etapa 3: Flujo de éxito contra base de datos real', () => {
   it('PATCH /api/participants/:id/role retorna 404 si el participante no existe', async () => {
     const res = await agent.patch('/api/participants/999999999/role').send({ grupo_id: 1 });
     expect(res.status).toBe(404);
+  });
+
+  it('PATCH /api/participants/:id/email actualiza el correo', async () => {
+    const nuevoCorreo = `editado.${Date.now()}@ejemplo-sintetico.test`;
+    const res = await agent.patch(`/api/participants/${createdParticipantId}/email`).send({
+      correo: nuevoCorreo,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: createdParticipantId, email: nuevoCorreo });
+  });
+
+  it('GET /api/participants marca a los participantes como activos por defecto', async () => {
+    const res = await agent.get('/api/participants');
+    const creado = res.body.data.find((p: { id: number }) => p.id === createdParticipantId);
+    expect(creado.active).toBe(true);
+  });
+
+  it('PATCH /api/participants/:id/status desactiva a un participante sin confirmaciones próximas', async () => {
+    const res = await agent.patch(`/api/participants/${createdParticipantId}/status`).send({
+      activo: false,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: createdParticipantId, active: false });
+
+    const lista = await agent.get('/api/participants');
+    const encontrado = lista.body.data.find((p: { id: number }) => p.id === createdParticipantId);
+    expect(encontrado.active).toBe(false);
+  });
+
+  it('PATCH /api/participants/:id/status reactiva a un participante', async () => {
+    const res = await agent.patch(`/api/participants/${createdParticipantId}/status`).send({
+      activo: true,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({ id: createdParticipantId, active: true });
+  });
+
+  describe('Desactivación con confirmación próxima (exige comentario)', () => {
+    let participanteConfirmadoId: number;
+    let servicioProximoId: number;
+
+    beforeAll(async () => {
+      const fechaFutura = new Date();
+      fechaFutura.setDate(fechaFutura.getDate() + 400);
+      const fechaServicio = fechaFutura.toISOString().slice(0, 10);
+      const fechaCierre = new Date(fechaFutura.getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+
+      const participante = await agent.post('/api/participants').send({
+        nombre: 'Prueba',
+        primer_apellido: 'ConfirmacionProxima',
+        correo: `prueba.confirmacion.proxima.${Date.now()}@ejemplo-sintetico.test`,
+        grupo_id: 1,
+      });
+      participanteConfirmadoId = participante.body.data.id;
+
+      const servicio = await agent.post('/api/services').send({
+        fecha_servicio: fechaServicio,
+        hora_servicio: '09:00',
+        fecha_cierre_confirmacion: fechaCierre,
+        tipo: 'Regular',
+      });
+      servicioProximoId = servicio.body.data.id;
+
+      const token = generarToken(participanteConfirmadoId, servicioProximoId);
+      const confirmacion = await request(app).post(`/confirm/${token}`).send({ respuesta: 'Sí' });
+      expect(confirmacion.status).toBe(200);
+    });
+
+    it('Rechaza la desactivación sin comentario y avisa que requiere justificación', async () => {
+      const res = await agent.patch(`/api/participants/${participanteConfirmadoId}/status`).send({
+        activo: false,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.requiresComment).toBe(true);
+    });
+
+    it('Permite la desactivación cuando se incluye el comentario de justificación', async () => {
+      const res = await agent.patch(`/api/participants/${participanteConfirmadoId}/status`).send({
+        activo: false,
+        comentario: 'Renunció al equipo de servidores esta semana.',
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ id: participanteConfirmadoId, active: false });
+    });
+
+    it('El servidor desactivado deja de contar como convocado en el servicio', async () => {
+      const res = await agent.get(`/api/services/${servicioProximoId}`);
+      expect(res.status).toBe(200);
+      const sigueApareciendo = res.body.data.participants.some(
+        (p: { id: number }) => p.id === participanteConfirmadoId
+      );
+      expect(sigueApareciendo).toBe(false);
+    });
   });
 });

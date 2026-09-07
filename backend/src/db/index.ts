@@ -62,8 +62,14 @@ export async function initDb(): Promise<void> {
         primer_apellido TEXT NOT NULL,
         segundo_apellido TEXT,
         correo TEXT UNIQUE NOT NULL,
-        grupo_id INTEGER NOT NULL REFERENCES Grupo(id)
+        grupo_id INTEGER NOT NULL REFERENCES Grupo(id),
+        activo BOOLEAN NOT NULL DEFAULT true
       );
+    `);
+
+    // Idempotente: agrega la columna si la tabla ya existía de una versión anterior.
+    await client.query(`
+      ALTER TABLE Participante ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
     `);
 
     await client.query(`
@@ -101,9 +107,21 @@ export async function initDb(): Promise<void> {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS Historial_Participante (
+        id SERIAL PRIMARY KEY,
+        participante_id INTEGER NOT NULL REFERENCES Participante(id),
+        accion TEXT NOT NULL CHECK (accion IN ('Desactivado', 'Reactivado')),
+        comentario TEXT,
+        actor TEXT NOT NULL DEFAULT 'Coordinador',
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_respuesta_participante_servicio ON Respuesta(participante_id, servicio_id);
       CREATE INDEX IF NOT EXISTS idx_intentos_servicio ON Intento_Envio(servicio_id);
       CREATE INDEX IF NOT EXISTS idx_intentos_participante_servicio ON Intento_Envio(participante_id, servicio_id, resultado);
+      CREATE INDEX IF NOT EXISTS idx_historial_participante ON Historial_Participante(participante_id);
     `);
 
     for (const grupo of BUSINESS_CONSTANTS.GRUPOS_BASE) {
@@ -128,6 +146,7 @@ export async function resetDb(): Promise<void> {
   const client = await getPool().connect();
   try {
     await client.query(`
+      DROP TABLE IF EXISTS Historial_Participante CASCADE;
       DROP TABLE IF EXISTS Intento_Envio CASCADE;
       DROP TABLE IF EXISTS Respuesta CASCADE;
       DROP TABLE IF EXISTS Servicio CASCADE;

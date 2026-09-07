@@ -96,17 +96,27 @@ export interface ServiceJson {
   status: 'Pendiente' | 'Vencido' | 'Cerrado' | 'Completo';
 }
 
+// Un servidor desactivado deja de contar como convocado (RN interna de la Etapa 3): no suma
+// en "invited" ni en "confirmed" de ningún servicio, para que "pendientes" siga siendo
+// consistente (invited - confirmed) sobre el mismo universo de participantes activos.
 async function contarTodosLosParticipantes(): Promise<number> {
-  const res = await query<{ count: string }>('SELECT COUNT(*) as count FROM Participante');
+  const res = await query<{ count: string }>(
+    'SELECT COUNT(*) as count FROM Participante WHERE activo = true'
+  );
   return parseInt(res.rows[0]?.count || '0', 10);
 }
 
-async function contarRespuestasPorServicio(servicioId: number): Promise<number> {
-  const res = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM Respuesta WHERE servicio_id = $1',
-    [servicioId]
+async function contarRespuestasPorTodosLosServicios(): Promise<Map<number, number>> {
+  const res = await query<{ servicio_id: number; count: string }>(
+    `
+    SELECT r.servicio_id, COUNT(*) as count
+    FROM Respuesta r
+    JOIN Participante p ON r.participante_id = p.id
+    WHERE p.activo = true
+    GROUP BY r.servicio_id
+  `
   );
-  return parseInt(res.rows[0]?.count || '0', 10);
+  return new Map(res.rows.map((row) => [row.servicio_id, parseInt(row.count, 10)]));
 }
 
 export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecido[]> {
@@ -116,11 +126,12 @@ export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecid
   const hoyDate = parseDate(hoyStr);
 
   const totalParticipantes = await contarTodosLosParticipantes();
+  const confirmadosPorServicio = await contarRespuestasPorTodosLosServicios();
 
   const serviciosConInfo: ServicioEnriquecido[] = [];
 
   for (const servicio of servicios) {
-    const confirmados = await contarRespuestasPorServicio(servicio.id);
+    const confirmados = confirmadosPorServicio.get(servicio.id) ?? 0;
     const pendientes = totalParticipantes - confirmados;
 
     const fechaCierreStr = formatDateYMD(servicio.fecha_cierre_confirmacion);
@@ -208,7 +219,7 @@ export async function obtenerParticipantesConEstado(
     primer_apellido: string;
     segundo_apellido: string | null;
     correo: string;
-  }>('SELECT id, nombre, primer_apellido, segundo_apellido, correo FROM Participante ORDER BY nombre ASC, primer_apellido ASC');
+  }>('SELECT id, nombre, primer_apellido, segundo_apellido, correo FROM Participante WHERE activo = true ORDER BY nombre ASC, primer_apellido ASC');
 
   const respuestasRes = await query<{ participante_id: number; respuesta: 'Sí' | 'No' }>(
     'SELECT participante_id, respuesta FROM Respuesta WHERE servicio_id = $1',

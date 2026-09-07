@@ -64,6 +64,7 @@
   display: inline-flex;
   font-size: 0.875rem;
   font-weight: 650;
+  gap: 4px;
   color: var(--color-primary);
   padding: 7px 8px;
   text-decoration: none;

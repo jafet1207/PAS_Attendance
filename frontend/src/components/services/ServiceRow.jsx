@@ -1,3 +1,4 @@
+import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import ServiceStatusBadge from './ServiceStatusBadge'
 import AttendanceProgress from './AttendanceProgress'
@@ -26,7 +27,7 @@ export default function ServiceRow({ service }) {
       </td>
       <td className={styles.actions}>
         <Link to={`/services/${service.id}/submissions`} className={styles.secondaryAction}>Envíos</Link>
-        <Link to={`/services/${service.id}`} className={styles.primaryAction}>Gestionar →</Link>
+        <Link to={`/services/${service.id}`} className={styles.primaryAction}>Gestionar <ArrowRight size={15} /></Link>
       </td>
     </tr>
   )

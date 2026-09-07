@@ -53,3 +53,19 @@ export async function updateParticipantRole(id, grupoId) {
   })
   return body.data
 }
+
+export async function updateParticipantEmail(id, correo) {
+  const body = await apiRequest(`/api/participants/${id}/email`, {
+    method: 'PATCH',
+    body: JSON.stringify({ correo }),
+  })
+  return body.data
+}
+
+export async function updateParticipantStatus(id, activo, comentario) {
+  const body = await apiRequest(`/api/participants/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ activo, comentario }),
+  })
+  return body.data
+}

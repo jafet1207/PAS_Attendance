@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ParticipanteModel } from '../models/participante.model.js';
 import { GrupoModel } from '../models/grupo.model.js';
+import { HistorialParticipanteModel } from '../models/historialParticipante.model.js';
 import { construirNombreCompleto } from '../services/serviciosService.js';
 
 export class ParticipantsController {
@@ -16,6 +17,7 @@ export class ParticipantsController {
           id: p.id,
           name: construirNombreCompleto(p.nombre, p.primer_apellido, p.segundo_apellido),
           email: p.correo,
+          active: p.activo,
           group: {
             id: p.grupo_id,
             name: gruposMap.get(p.grupo_id) || 'Sin grupo',
@@ -140,6 +142,83 @@ export class ParticipantsController {
     } catch (error) {
       console.error('[ParticipantsController.updateParticipantRole Error]', error);
       res.status(500).json({ error: 'Error interno al actualizar el rol del participante.' });
+    }
+  }
+
+  static async updateParticipantEmail(req: Request, res: Response): Promise<void> {
+    const participanteId = parseInt(req.params.id, 10);
+    if (isNaN(participanteId)) {
+      res.status(400).json({ error: 'ID de participante inválido.' });
+      return;
+    }
+
+    const correo = (req.body?.correo || '').toString().trim();
+    if (!correo || !correo.includes('@')) {
+      res.status(400).json({ error: 'Ingresa un correo válido.' });
+      return;
+    }
+
+    try {
+      const actualizado = await ParticipanteModel.updateCorreo(participanteId, correo);
+      if (!actualizado) {
+        res.status(404).json({ error: 'Servidor no encontrado.' });
+        return;
+      }
+
+      res.json({ data: { id: participanteId, email: correo } });
+    } catch (error: any) {
+      console.error('[ParticipantsController.updateParticipantEmail Error]', error);
+      if (error?.code === '23505') {
+        res.status(409).json({ error: 'Ya existe otro servidor registrado con este correo.' });
+        return;
+      }
+      res.status(500).json({ error: 'Error interno al actualizar el correo del participante.' });
+    }
+  }
+
+  static async updateParticipantStatus(req: Request, res: Response): Promise<void> {
+    const participanteId = parseInt(req.params.id, 10);
+    if (isNaN(participanteId)) {
+      res.status(400).json({ error: 'ID de participante inválido.' });
+      return;
+    }
+
+    const datos = req.body || {};
+    const activo = Boolean(datos.activo);
+    const comentario = (datos.comentario || '').toString().trim() || null;
+
+    try {
+      const participante = await ParticipanteModel.getById(participanteId);
+      if (!participante) {
+        res.status(404).json({ error: 'Servidor no encontrado.' });
+        return;
+      }
+
+      // Al desactivar, si el servidor ya confirmó "Sí" a un servicio cuya fecha aún no pasa,
+      // se exige un comentario que justifique la decisión (queda en el historial de auditoría).
+      if (!activo) {
+        const confirmacionProxima = await ParticipanteModel.tieneConfirmacionProxima(participanteId);
+        if (confirmacionProxima && !comentario) {
+          res.status(400).json({
+            requiresComment: true,
+            error:
+              'Este servidor confirmó asistencia a un servicio próximo. Debes justificar con un comentario por qué lo desactivas.',
+          });
+          return;
+        }
+      }
+
+      await ParticipanteModel.updateActivo(participanteId, activo);
+      await HistorialParticipanteModel.registrar(
+        participanteId,
+        activo ? 'Reactivado' : 'Desactivado',
+        comentario
+      );
+
+      res.json({ data: { id: participanteId, active: activo } });
+    } catch (error) {
+      console.error('[ParticipantsController.updateParticipantStatus Error]', error);
+      res.status(500).json({ error: 'Error interno al actualizar el estado del participante.' });
     }
   }
 }

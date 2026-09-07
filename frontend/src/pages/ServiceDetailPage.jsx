@@ -36,14 +36,14 @@ export default function ServiceDetailPage() {
       <Link className={styles.back} to="/services"><ArrowLeft size={18} /> Servicios</Link>
       <header className={styles.header}>
         <div className={styles.date}>{formatServiceDate(service.date)}</div>
-        <div><h1>{service.name}</h1><p>{formatServiceTime(service.date)} · Cierre {formatClosingDate(service.closingDate)}</p></div>
+        <div className={styles.titleBlock}><h1>{service.name}</h1><p>{formatServiceTime(service.date)} · Cierre {formatClosingDate(service.closingDate)}</p></div>
+        <div className={styles.summary} aria-label="Resumen de asistencia">
+          <div><strong>{detail.participants.length}</strong><span>Convocados</span></div>
+          <div><strong>{confirmed}</strong><span>Confirmados</span></div>
+          <div><strong>{pending}</strong><span>Pendientes</span></div>
+        </div>
         <ServiceStatusBadge status={service.status} />
       </header>
-      <section className={styles.summary} aria-label="Resumen de asistencia">
-        <div><strong>{detail.participants.length}</strong><span>Convocados</span></div>
-        <div><strong>{confirmed}</strong><span>Confirmados</span></div>
-        <div><strong>{pending}</strong><span>Pendientes</span></div>
-      </section>
       <section className={styles.participants}>
         <div className={styles.listHeader}><div><h2>Personas convocadas</h2><p>Revisa la respuesta y el último recordatorio de cada persona.</p></div><Link to={`/services/${service.id}/submissions`}><Mail size={17} /> Ver envíos</Link></div>
         <div className={styles.controls}><label className={styles.search}><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre" /></label>{['Todos', 'Pendientes', 'Confirmados'].map((item) => <button className={filter === item ? styles.active : ''} key={item} onClick={() => setFilter(item)} type="button">{item}</button>)}</div>

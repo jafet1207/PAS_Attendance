@@ -16,7 +16,7 @@
   color: white;
 }
 
-.primary:hover {
+.primary:not(:disabled):hover {
   background: var(--color-primary-hover);
 }
 
@@ -26,7 +26,7 @@
   border-color: var(--color-border);
 }
 
-.secondary:hover {
+.secondary:not(:disabled):hover {
   background: var(--color-bg);
 }
 

@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Calendar, Church, Plus, Users } from 'lucide-react'
+import { Calendar, Church, Users } from 'lucide-react'
 import styles from './Sidebar.module.css'
 
 const NAV_ITEMS = [
@@ -7,13 +7,7 @@ const NAV_ITEMS = [
     to: '/services',
     label: 'Servicios',
     icon: Calendar,
-    isActive: (pathname) => pathname === '/services' || (pathname.startsWith('/services/') && pathname !== '/services/new'),
-  },
-  {
-    to: '/services/new',
-    label: 'Nuevo Servicio',
-    icon: Plus,
-    isActive: (pathname) => pathname === '/services/new',
+    isActive: (pathname) => pathname.startsWith('/services'),
   },
   {
     to: '/people',

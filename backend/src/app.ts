@@ -60,6 +60,8 @@ export function createApp(): express.Express {
   app.get('/api/participants', requireAuth, ParticipantsController.getParticipants);
   app.post('/api/participants', requireAuth, ParticipantsController.createParticipant);
   app.patch('/api/participants/:id/role', requireAuth, ParticipantsController.updateParticipantRole);
+  app.patch('/api/participants/:id/email', requireAuth, ParticipantsController.updateParticipantEmail);
+  app.patch('/api/participants/:id/status', requireAuth, ParticipantsController.updateParticipantStatus);
 
   // Ruta pública / legacy de servicios
   app.get('/api/servicios', ServicesController.getServiciosLegacy);

@@ -4,9 +4,10 @@
  * Jinja que aún existen (/confirm/*). No hay tokens en localStorage.
  */
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, body) {
     super(message)
     this.status = status
+    this.body = body
   }
 }
 
@@ -25,7 +26,7 @@ export async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     const message = body?.error || `Error ${response.status} al llamar ${path}`
-    throw new ApiError(message, response.status)
+    throw new ApiError(message, response.status, body)
   }
 
   return body
