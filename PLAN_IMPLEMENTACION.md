@@ -86,6 +86,7 @@ El desarrollo del proyecto se estructura en **6 etapas incrementales y verificab
 
 ### Etapa 5: Recordatorios Automáticos y Servicio Mailer (Backend/Servicio)
 - **Objetivo:** Automatizar la evaluación y envío diario de recordatorios a los servidores pendientes, adjuntando archivos de calendario `.ics` y aplicando reglas de exclusión y tope de envíos.
+- **Pendiente de Etapa 4:** conectar el correo de acuse de recibo (RN-10) en `confirmController.ts::submitForm` — la Etapa 4 ya aplica y registra el tope de notificaciones (`Respuesta.notificaciones_enviadas`), pero no envía el correo porque el Mailer no existía todavía. Cuando `mailer/index.ts` esté listo, conectar el envío donde `resultado.debeNotificar` es `true`.
 - **Backend:**
   - `backend/src/models/intentoEnvio.model.ts`.
   - `backend/src/mailer/index.ts` (`MockMailer`, `ScriptedMailer`, `GmailMailer`).

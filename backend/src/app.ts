@@ -7,6 +7,7 @@ import { AuthController } from './controllers/authController.js';
 import { GroupsController } from './controllers/groupsController.js';
 import { ServicesController } from './controllers/servicesController.js';
 import { ParticipantsController } from './controllers/participantsController.js';
+import { ConfirmController } from './controllers/confirmController.js';
 import { requireAuth } from './middlewares/auth.js';
 
 export function createApp(): express.Express {
@@ -62,6 +63,11 @@ export function createApp(): express.Express {
 
   // Ruta pública / legacy de servicios
   app.get('/api/servicios', ServicesController.getServiciosLegacy);
+
+  // Rutas públicas de confirmación por enlace (Etapa 4)
+  app.get('/confirm/:token', ConfirmController.getForm);
+  app.post('/confirm/:token', ConfirmController.submitForm);
+  app.get('/confirm/:token/:accion', ConfirmController.quickAction);
 
   return app;
 }
