@@ -21,6 +21,9 @@ Thumbs.db
 *.swo
 *~
 
+# Claude Code: solo se ignoran los overrides locales de permisos, no los skills/comandos
+# propios del proyecto (.claude/skills/, .claude/commands/, .claude/launch.json).
+.claude/settings.local.json
+
 # Temporary & Backups
-.claude/
 .relocation-backup-*/
