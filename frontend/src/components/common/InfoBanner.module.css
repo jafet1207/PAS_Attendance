@@ -1,0 +1,16 @@
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}

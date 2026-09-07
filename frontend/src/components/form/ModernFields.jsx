@@ -50,7 +50,9 @@ function displayTime(value) {
   const [hours, minutes] = value.split(':').map(Number); const period = hours >= 12 ? 'PM' : 'AM'; const hour = hours % 12 || 12
   return `${hour}:${String(minutes).padStart(2, '0')} ${period}`
 }
-const timeOptions = Array.from({ length: 48 }, (_, index) => { const hours = Math.floor(index / 2); const minutes = index % 2 ? 30 : 0; return { value: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`, label: displayTime(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`) } })
+const HORA_MIN = 8
+const HORA_MAX = 21
+const timeOptions = Array.from({ length: (HORA_MAX - HORA_MIN) * 2 + 1 }, (_, index) => { const hours = HORA_MIN + Math.floor(index / 2); const minutes = index % 2 ? 30 : 0; return { value: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`, label: displayTime(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`) } })
 
 export function ModernTimeField({ value, onChange }) {
   return <ModernSelect ariaLabel="Hora del servicio" options={timeOptions.map((option) => ({ ...option, label: <><Clock3 size={16} /> {option.label}</> }))} placeholder="Selecciona una hora" value={value} onChange={onChange} />

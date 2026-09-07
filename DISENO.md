@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS Grupo (
 CREATE TABLE IF NOT EXISTS Participante (
     id SERIAL PRIMARY KEY,
     nombre TEXT NOT NULL,
+    primer_apellido TEXT NOT NULL,
+    segundo_apellido TEXT,
     correo TEXT UNIQUE NOT NULL,
     grupo_id INTEGER NOT NULL REFERENCES Grupo(id)
 );
@@ -42,7 +44,6 @@ CREATE TABLE IF NOT EXISTS Servicio (
     id SERIAL PRIMARY KEY,
     fecha_servicio DATE NOT NULL,
     hora_servicio TIME NOT NULL DEFAULT '00:00:00',
-    grupo_id INTEGER NOT NULL REFERENCES Grupo(id),
     fecha_cierre_confirmacion DATE NOT NULL,
     tipo TEXT NOT NULL DEFAULT 'Regular' CHECK (tipo IN ('Regular', 'Extraordinario')),
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP

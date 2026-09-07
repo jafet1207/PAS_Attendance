@@ -80,8 +80,23 @@ Este documento especifica exhaustivamente todos los endpoints del backend en **N
 
 ---
 
+### `GET /api/services/config`
+- **Descripción:** Retorna los días de anticipación configurados para sugerir la fecha de cierre de confirmación por defecto según el tipo de servicio (configurables por variables de entorno `DIAS_CIERRE_REGULAR` y `DIAS_CIERRE_EXTRAORDINARIO`, por defecto 3 y 1).
+- **Autenticación:** Requiere sesión.
+- **Respuesta Exitosa (200 OK):**
+  ```json
+  {
+    "data": {
+      "diasCierreRegular": 3,
+      "diasCierreExtraordinario": 1
+    }
+  }
+  ```
+
+---
+
 ### `GET /api/services`
-- **Descripción:** Retorna el listado de servicios enriquecidos con métricas de asistencia, cálculo reactivo de estado y ordenados por prioridad de atención (`Vencido` > `Pendiente` > `Cerrado` > `Completo`).
+- **Descripción:** Retorna el listado de servicios enriquecidos con métricas de asistencia, cálculo reactivo de estado y ordenados por prioridad de atención (`Vencido` > `Pendiente` > `Cerrado` > `Completo`). Un servicio convoca a **todos** los participantes registrados, sin distinción de grupo. El grupo de cada participante solo determina el contenido de su recordatorio (hora de llegada) y si se le envía o no, no quién es convocado.
 - **Autenticación:** Requiere sesión.
 - **Respuesta Exitosa (200 OK):**
   ```json
@@ -92,7 +107,6 @@ Este documento especifica exhaustivamente todos los endpoints del backend en **N
         "name": "Servicio Regular Sábado 12 Setiembre",
         "type": "Regular",
         "date": "2026-09-12T09:00:00",
-        "group": { "id": 1, "name": "Servidor" },
         "closingDate": "2026-09-10",
         "invited": 20,
         "confirmed": 18,
@@ -116,7 +130,6 @@ Este documento especifica exhaustivamente todos los endpoints del backend en **N
   {
     "fecha_servicio": "2026-09-20",
     "hora_servicio": "09:00",
-    "grupo_id": 1,
     "fecha_cierre_confirmacion": "2026-09-18",
     "tipo": "Regular"
   }

@@ -61,6 +61,12 @@ export default function LoginPage({ onLogin }) {
                   setPassword(e.target.value)
                   if (error) setError(null)
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSubmit(e)
+                  }
+                }}
                 disabled={submitting}
                 autoFocus
                 autoComplete="current-password"

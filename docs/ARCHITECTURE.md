@@ -46,3 +46,22 @@ El sistema **PAS Attendance** adopta una arquitectura desacoplada y orientada a 
 - **Pool de Conexiones:** Administrado por `pg.Pool` con límite de 10 conexiones simultáneas y `idleTimeout` de 30 segundos.
 - **Consultas Parametrizadas:** Cero concatenación de cadenas SQL; todos los valores dinámicos se inyectan mediante parámetros posicionales (`$1, $2...`).
 - **Idempotencia:** La inicialización del esquema (`initDb`) emplea `CREATE TABLE IF NOT EXISTS` y bloques transaccionales seguros.
+
+---
+
+## 4. Layout y Navegación del Frontend
+El panel de coordinación (rutas autenticadas) usa un layout de dashboard administrativo compuesto por componentes de `frontend/src/components/layout/`:
+
+- **`AppLayout`:** Contenedor raíz. Compone `Sidebar` + `TopBar` + el contenido enrutado + `AppFooter`, y gestiona el estado de apertura del menú en dispositivos móviles/tablet.
+- **`Sidebar`:** Navegación principal vertical (fondo verde oscuro), fija en escritorio. Contiene la identidad del sistema y los enlaces reales de navegación (Servicios, Nuevo Servicio, Servidores); resalta automáticamente la opción activa según la ruta actual.
+- **`TopBar`:** Barra superior minimalista (fondo blanco, borde inferior sutil) que muestra únicamente la información del usuario autenticado (avatar, rol, menú de cierre de sesión). No repite navegación ni el nombre del sistema.
+- **`PageHeader`:** Encabezado reutilizable de página (enlace de regreso opcional, título, descripción, acciones e ilustración decorativa opcional).
+- **`FormSection`:** Sección con icono dentro de una tarjeta de formulario, usada para agrupar campos relacionados sin anidar tarjetas.
+- **`InfoBanner`** (en `components/common/`): Aviso contextual de baja intensidad visual para mensajes informativos (no de error).
+
+**Comportamiento responsive:**
+- **Escritorio (≥ 1024px):** sidebar fijo de `256px` a la izquierda; la columna de contenido (TopBar + contenido + pie) se desplaza de forma independiente con su propio scroll.
+- **Tablet y móvil (< 1024px):** el sidebar se oculta y se abre como un panel tipo *drawer* mediante un botón de menú en la esquina superior izquierda de la TopBar, con superposición (overlay) y cierre automático al seleccionar una opción o al navegar.
+- Los formularios de dos columnas (por ejemplo, fecha y hora del servicio) pasan a una sola columna en pantallas angostas.
+
+Esta estructura reemplaza la navegación horizontal previa (antes en `AppHeader`, ahora eliminado) sin alterar las rutas, los contratos de la API ni la lógica de los formularios.

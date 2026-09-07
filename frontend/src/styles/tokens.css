@@ -21,6 +21,10 @@
   --color-danger: #78443b;
   --color-danger-bg: #f6ece9;
   --color-neutral-bg: #ebf1f5;
+  --color-info: #4a6572;
+  --color-info-bg: var(--color-neutral-bg);
+
+  --sidebar-width: 256px;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -37,4 +41,5 @@
   --touch-target-min: 52px;
 
   --shadow-sm: 0 4px 20px -2px rgba(67, 56, 42, 0.06), 0 2px 6px -1px rgba(67, 56, 42, 0.04);
+  --shadow-xs: 0 1px 2px rgba(28, 28, 24, 0.04);
 }

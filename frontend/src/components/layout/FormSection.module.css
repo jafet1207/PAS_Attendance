@@ -1,0 +1,37 @@
+.section {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-6) 0;
+}
+
+.section + .section {
+  border-top: 1px solid var(--color-border);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 1.0625rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.iconBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.body {
+  display: grid;
+  gap: var(--space-4);
+}

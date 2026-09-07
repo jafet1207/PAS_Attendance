@@ -1,0 +1,41 @@
+.wrapper {
+  min-width: 190px;
+}
+
+.labelRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+
+.percentage {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.track {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-neutral-bg);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background: var(--color-warning);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.fill.complete {
+  background: var(--color-success);
+}
+
+.pending {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 0.8125rem;
+  color: var(--color-text-faint);
+}

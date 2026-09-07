@@ -15,6 +15,8 @@ export const config = {
   coordinadorPassword: process.env.COORDINADOR_PASSWORD || 'coordinador123',
   gmailUser: process.env.GMAIL_USER || '',
   gmailAppPassword: process.env.GMAIL_APP_PASSWORD || '',
+  diasCierreRegular: parseInt(process.env.DIAS_CIERRE_REGULAR || '3', 10),
+  diasCierreExtraordinario: parseInt(process.env.DIAS_CIERRE_EXTRAORDINARIO || '1', 10),
 };
 
 // Constantes de negocio

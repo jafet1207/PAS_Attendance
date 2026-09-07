@@ -1,7 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import AppHeader from './components/layout/AppHeader'
-import AppFooter from './components/layout/AppFooter'
+import AppLayout from './components/layout/AppLayout'
 import LoginPage from './pages/LoginPage'
+import ServicesPage from './pages/ServicesPage'
+import CreateServicePage from './pages/CreateServicePage'
+import ServiceDetailPage from './pages/ServiceDetailPage'
+import ServiceSubmissionsPage from './pages/ServiceSubmissionsPage'
 import { useSession } from './hooks/useSession'
 
 export default function App() {
@@ -22,19 +25,15 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <AppHeader onLogout={logout} />
-      <main className="app-main">
-        <Routes>
-          <Route path="*" element={
-            <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-              <h2 style={{ color: 'var(--color-primary, #2E5A44)', marginBottom: '8px' }}>Bienvenido al Panel de Coordinación</h2>
-              <p style={{ color: 'var(--color-text-muted, #5C5852)' }}>Sesión de coordinador iniciada correctamente.</p>
-            </div>
-          } />
-        </Routes>
-      </main>
-      <AppFooter />
-    </div>
+    <AppLayout onLogout={logout}>
+      <Routes>
+        <Route path="/" element={<Navigate to="/services" replace />} />
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/services/new" element={<CreateServicePage />} />
+        <Route path="/services/:serviceId" element={<ServiceDetailPage />} />
+        <Route path="/services/:serviceId/submissions" element={<ServiceSubmissionsPage />} />
+        <Route path="*" element={<Navigate to="/services" replace />} />
+      </Routes>
+    </AppLayout>
   )
 }
