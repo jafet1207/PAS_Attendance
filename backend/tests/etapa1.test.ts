@@ -14,7 +14,8 @@ describe('Etapa 1: Infraestructura y autenticación de sesión', () => {
     const res = await request(app).get('/api/session');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      authenticated: false,
+      // ROTURA DELIBERADA para la demo rojo→verde de la CI: el sistema real devuelve `false`.
+      authenticated: true,
       role: null,
     });
   });
