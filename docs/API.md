@@ -203,16 +203,16 @@ Este documento especifica exhaustivamente todos los endpoints del backend en **N
 ## 3. Módulo de Servidores y Participantes
 
 ### `GET /api/participants`
-- **Descripción:** Lista de todos los servidores registrados con su grupo y rol actual.
-- **Query Params:** `service_id` (opcional).
+- **Descripción:** Lista de todos los servidores registrados con su grupo y rol actual, ordenados por nombre.
 - **Autenticación:** Requiere sesión.
+- **Nota:** no admite filtro por `service_id`. Como todo servicio convoca a todos los participantes (ver `GET /api/services`), ese filtro no aportaría un resultado distinto entre servicios. Para ver el estado de confirmación de un servicio puntual, usar `GET /api/services/:id`.
 - **Respuesta Exitosa (200 OK):**
   ```json
   {
     "data": [
       {
         "id": 10,
-        "name": "Carlos Santana",
+        "name": "Carlos Santana Rojas",
         "email": "carlos@test.com",
         "group": { "id": 1, "name": "Servidor" }
       }
@@ -223,26 +223,35 @@ Este documento especifica exhaustivamente todos los endpoints del backend en **N
 ---
 
 ### `POST /api/participants`
-- **Descripción:** Da de alta un nuevo servidor validando unicidad de correo.
+- **Descripción:** Da de alta un nuevo servidor validando campos requeridos y unicidad de correo.
 - **Autenticación:** Requiere sesión.
 - **Cuerpo de la Petición:**
   ```json
   {
-    "name": "María Rojas",
-    "email": "maria@test.com",
-    "groupId": 1
+    "nombre": "María",
+    "primer_apellido": "Rojas",
+    "segundo_apellido": "Vega",
+    "correo": "maria@test.com",
+    "grupo_id": 1
   }
   ```
+  `segundo_apellido` es opcional; el resto de los campos son requeridos.
 - **Respuesta Exitosa (201 Created):**
   ```json
   {
-    "data": { "id": 11, "name": "María Rojas", "email": "maria@test.com", "group": { "id": 1, "name": "Servidor" } }
+    "data": { "id": 11, "name": "María Rojas Vega", "email": "maria@test.com", "group": { "id": 1, "name": "Servidor" } }
+  }
+  ```
+- **Error de Validación (400 Bad Request):**
+  ```json
+  {
+    "errors": ["El nombre es requerido."]
   }
   ```
 - **Error de Correo Duplicado (409 Conflict):**
   ```json
   {
-    "errors": ["Ya existe un participante registrado con este correo electrónico."]
+    "error": "No fue posible guardar la persona. Verifica que el correo no esté repetido."
   }
   ```
 
@@ -254,7 +263,7 @@ Este documento especifica exhaustivamente todos los endpoints del backend en **N
 - **Cuerpo de la Petición:**
   ```json
   {
-    "groupId": 2
+    "grupo_id": 2
   }
   ```
 - **Respuesta Exitosa (200 OK):**

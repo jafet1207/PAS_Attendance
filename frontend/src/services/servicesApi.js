@@ -32,3 +32,24 @@ export async function getServiceSubmissions(id) {
   const body = await apiRequest(`/api/services/${id}/submissions`)
   return body.data
 }
+
+export async function getParticipants() {
+  const body = await apiRequest('/api/participants')
+  return body.data
+}
+
+export async function createParticipant(data) {
+  const body = await apiRequest('/api/participants', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+  return body.data
+}
+
+export async function updateParticipantRole(id, grupoId) {
+  const body = await apiRequest(`/api/participants/${id}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ grupo_id: grupoId }),
+  })
+  return body.data
+}

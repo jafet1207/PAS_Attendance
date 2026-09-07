@@ -56,7 +56,7 @@ El sistema debe operar de forma desacoplada con un **Frontend en React 19 + Vite
 
 ### RF-3: Administración de Servidores y Grupos
 - `RF-3.1`: `GET /api/groups` - Listar grupos disponibles (`Servidor`, `Inducción`, `Líder`, `Director`).
-- `RF-3.2`: `GET /api/participants` - Listar participantes registrados con su grupo asignado y filtro opcional por `service_id`.
+- `RF-3.2`: `GET /api/participants` - Listar participantes registrados con su grupo asignado. Un servicio convoca a todos los participantes por igual (ver RF-2), por lo que no existe filtro por `service_id`; el estado de confirmación por servicio se consulta en `GET /api/services/:id`.
 - `RF-3.3`: `POST /api/participants` - Registrar nuevo servidor validando unicidad de correo electrónico.
 - `RF-3.4`: `PATCH /api/participants/:id/role` - Modificar el rol/grupo asignado a un servidor.
 

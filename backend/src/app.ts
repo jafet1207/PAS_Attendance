@@ -6,6 +6,7 @@ import { config } from './config/env.js';
 import { AuthController } from './controllers/authController.js';
 import { GroupsController } from './controllers/groupsController.js';
 import { ServicesController } from './controllers/servicesController.js';
+import { ParticipantsController } from './controllers/participantsController.js';
 import { requireAuth } from './middlewares/auth.js';
 
 export function createApp(): express.Express {
@@ -53,6 +54,11 @@ export function createApp(): express.Express {
   app.post('/api/services', requireAuth, ServicesController.createService);
   app.get('/api/services/:id', requireAuth, ServicesController.getServiceDetail);
   app.get('/api/services/:id/submissions', requireAuth, ServicesController.getServiceSubmissions);
+
+  // Rutas de servidores / participantes (Etapa 3, protegidas)
+  app.get('/api/participants', requireAuth, ParticipantsController.getParticipants);
+  app.post('/api/participants', requireAuth, ParticipantsController.createParticipant);
+  app.patch('/api/participants/:id/role', requireAuth, ParticipantsController.updateParticipantRole);
 
   // Ruta pública / legacy de servicios
   app.get('/api/servicios', ServicesController.getServiciosLegacy);
