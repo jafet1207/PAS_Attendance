@@ -1,0 +1,62 @@
+name: Integración Continua (CI)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    # Base de datos Postgres efímera y aislada para este run: no es la base de desarrollo real
+    # (Neon), así que la suite nunca depende de credenciales reales ni toca datos compartidos.
+    # No se usa SQLite: el proyecto usa SQL específico de Postgres en todo el backend
+    # (COUNT(*) FILTER, make_interval, etc.) y un motor distinto no probaría el código real.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pas_ci
+          POSTGRES_PASSWORD: pas_ci
+          POSTGRES_DB: pas_attendance_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U pas_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      # Sin sslmode=require a propósito: el contenedor de servicio no habla SSL, y el backend
+      # (backend/src/db/index.ts) solo activa SSL cuando la cadena de conexión lo incluye.
+      TEST_DATABASE_URL: postgresql://pas_ci:pas_ci@localhost:5432/pas_attendance_ci
+
+    steps:
+      # Acciones de terceros fijadas por hash de commit (no por tag mutable), verificado contra
+      # el remoto oficial de cada acción antes de escribir este archivo.
+      - name: Checkout del código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Instalar dependencias (backend)
+        run: npm ci --prefix backend
+
+      - name: Instalar dependencias (frontend)
+        run: npm ci --prefix frontend
+
+      - name: Dar permisos de ejecución a verificar.sh
+        run: chmod +x ./verificar.sh
+
+      - name: Ejecutar puerta de calidad (build + pruebas)
+        run: ./verificar.sh

@@ -9,5 +9,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     fileParallelism: false,
+    // Crea/actualiza el esquema una sola vez antes de toda la suite. Necesario en integración
+    // continua, donde el runner arranca con una base de datos efímera y vacía (ver el comentario
+    // en tests/globalSetup.ts). Es idempotente: no afecta a un entorno donde el esquema ya existe.
+    globalSetup: './tests/globalSetup.ts',
   },
 });
