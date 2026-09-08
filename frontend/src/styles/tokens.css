@@ -21,10 +21,12 @@
   --color-danger: #78443b;
   --color-danger-bg: #f6ece9;
   --color-neutral-bg: #ebf1f5;
-  --color-info: #4a6572;
-  --color-info-bg: var(--color-neutral-bg);
+  --color-info: #2f5f78;
+  --color-info-bg: #e6f0f6;
+  --color-violet: #5b4b8a;
+  --color-violet-bg: #efeaf7;
 
-  --sidebar-width: 256px;
+  --sidebar-width: 220px;
 
   --radius-sm: 8px;
   --radius-md: 12px;

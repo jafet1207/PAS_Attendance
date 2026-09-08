@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Pencil, Plus, Search, Users, X } from 'lucide-react'
+import { Check, Filter, Mail, Pencil, Plus, Search, UserCheck, UserX, Users, X } from 'lucide-react'
 import Badge from '../components/common/Badge'
 import Button from '../components/common/Button'
 import ErrorState from '../components/common/ErrorState'
 import Modal from '../components/common/Modal'
+import Pagination from '../components/common/Pagination'
+import RowActionsMenu from '../components/common/RowActionsMenu'
 import PageContainer from '../components/layout/PageContainer'
 import PageHeader from '../components/layout/PageHeader'
 import Skeleton from '../components/common/Skeleton'
 import { ModernSelect } from '../components/form/ModernFields'
+import { usePagination } from '../hooks/usePagination'
 import {
   createParticipant,
   getGroups,
@@ -19,6 +22,19 @@ import {
 import styles from './PeoplePage.module.css'
 
 const emptyForm = { nombre: '', primer_apellido: '', segundo_apellido: '', correo: '', grupo_id: '' }
+
+// Mínimo 2 caracteres y no compuesto solo por dígitos (evita valores como "1" o "42").
+const esTextoValido = (valor) => valor.trim().length >= 2 && !/^\d+$/.test(valor.trim())
+const esCorreoValido = (valor) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor.trim())
+
+// Tono visual del badge de rol: puramente decorativo, asigna un color estable según el nombre
+// del grupo (no representa ninguna regla de negocio).
+const ROLE_TONES = ['info', 'violet', 'warning', 'neutral']
+function roleTone(name) {
+  let hash = 0
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) % 997
+  return ROLE_TONES[hash % ROLE_TONES.length]
+}
 
 export default function PeoplePage() {
   const [people, setPeople] = useState(null)
@@ -55,13 +71,23 @@ export default function PeoplePage() {
 
   const visiblePeople = useMemo(
     () =>
-      (people ?? []).filter((person) => {
-        const matchesText = `${person.name} ${person.email}`.toLowerCase().includes(query.trim().toLowerCase())
-        const matchesGroup = !groupFilter || person.group.id === Number(groupFilter)
-        return matchesText && matchesGroup
-      }),
+      (people ?? [])
+        .filter((person) => {
+          const matchesText = `${person.name} ${person.email}`.toLowerCase().includes(query.trim().toLowerCase())
+          const matchesGroup = !groupFilter || person.group.id === Number(groupFilter)
+          return matchesText && matchesGroup
+        })
+        // Primero por estado (activos antes que inactivos), luego por nombre.
+        .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, 'es')),
     [people, query, groupFilter]
   )
+
+  const { page, setPage, pageSize, setPageSize, pageItems, totalPages, totalItems } =
+    usePagination(visiblePeople, 10)
+
+  useEffect(() => {
+    setPage(1)
+  }, [query, groupFilter, setPage])
 
   function updateForm(name, value) {
     setForm((current) => ({ ...current, [name]: value }))
@@ -75,13 +101,28 @@ export default function PeoplePage() {
   }
 
   const canSave = Boolean(
-    form.nombre.trim() && form.primer_apellido.trim() && form.correo.trim() && form.grupo_id
+    esTextoValido(form.nombre) &&
+    esTextoValido(form.primer_apellido) &&
+    (!form.segundo_apellido.trim() || esTextoValido(form.segundo_apellido)) &&
+    esCorreoValido(form.correo) &&
+    form.grupo_id
   )
+
+  function validar() {
+    const errores = []
+    if (!esTextoValido(form.nombre)) errores.push('El nombre debe tener al menos 2 caracteres y no puede ser solo números.')
+    if (!esTextoValido(form.primer_apellido)) errores.push('El primer apellido debe tener al menos 2 caracteres y no puede ser solo números.')
+    if (form.segundo_apellido.trim() && !esTextoValido(form.segundo_apellido)) errores.push('El segundo apellido debe tener al menos 2 caracteres y no puede ser solo números.')
+    if (!esCorreoValido(form.correo)) errores.push('Ingresa un correo electrónico válido.')
+    if (!form.grupo_id) errores.push('Selecciona un grupo.')
+    return errores
+  }
 
   async function submit(event) {
     event.preventDefault()
-    if (!canSave) {
-      setFormErrors(['Completa el nombre, el primer apellido, el correo y selecciona un grupo.'])
+    const errores = validar()
+    if (errores.length > 0) {
+      setFormErrors(errores)
       return
     }
     setSaving(true)
@@ -178,14 +219,19 @@ export default function PeoplePage() {
   if (people === null || groups === null) return <PageContainer><Skeleton /></PageContainer>
 
   const groupOptions = groups.map((g) => ({ value: g.id, label: g.name }))
+  const grupoServidorId = groups.find((g) => g.name === 'Servidor')?.id ?? ''
+
+  function openModal() {
+    setForm({ ...emptyForm, grupo_id: grupoServidorId ? String(grupoServidorId) : '' })
+    setModalOpen(true)
+  }
 
   return (
     <PageContainer>
       <PageHeader
         title="Servidores"
-        description="Administra los servidores convocados a los servicios y el grupo al que pertenecen."
         actions={(
-          <Button onClick={() => setModalOpen(true)}>
+          <Button size="sm" onClick={openModal}>
             <Plus size={16} />
             Agregar servidor
           </Button>
@@ -194,119 +240,139 @@ export default function PeoplePage() {
 
       {error && <div className={styles.inlineError} role="alert">{error}</div>}
 
-      <section className={styles.list}>
-        <div className={styles.controls}>
-          <label className={styles.search}>
-            <Search size={17} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre o correo" />
-          </label>
-          <div className={styles.filterSelect}>
-            <ModernSelect
-              ariaLabel="Filtrar por grupo"
-              value={groupFilter}
-              onChange={setGroupFilter}
-              placeholder="Todos los grupos"
-              options={[{ value: '', label: 'Todos los grupos' }, ...groupOptions]}
-            />
-          </div>
+      <div className={styles.controls}>
+        <label className={styles.search}>
+          <Search size={17} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre o correo" />
+        </label>
+        <div className={styles.filterSelect}>
+          <Filter aria-hidden="true" className={styles.filterIcon} size={16} />
+          <ModernSelect
+            ariaLabel="Filtrar por grupo"
+            value={groupFilter}
+            onChange={setGroupFilter}
+            placeholder="Todos los grupos"
+            options={[{ value: '', label: 'Todos los grupos' }, ...groupOptions]}
+          />
         </div>
+      </div>
 
-        <div className={styles.count}>
-          {visiblePeople.length} {visiblePeople.length === 1 ? 'servidor' : 'servidores'}
+      <section className={styles.list}>
+        <div className={styles.rowsHeader}>
+          <span>Servidor</span>
+          <span>Rol</span>
+          <span>Estado</span>
+          <span />
         </div>
 
         <div className={styles.rows}>
-          {visiblePeople.map((person) => (
+          {pageItems.map((person) => (
             <article className={`${styles.row} ${!person.active ? styles.rowInactive : ''}`} key={person.id}>
-              <div className={styles.avatar}>
-                {person.name.split(' ').slice(0, 2).map((part) => part[0]).join('')}
-              </div>
-              <div>
-                <div className={styles.nameRow}>
-                  <strong>{person.name}</strong>
-                  {!person.active && <Badge tone="danger">Inactivo</Badge>}
+              <div className={styles.identityCell}>
+                <div className={styles.avatar}>
+                  {person.name.split(' ').slice(0, 2).map((part) => part[0]).join('')}
                 </div>
-                {emailEditingId === person.id ? (
-                  <div className={styles.emailEditor}>
-                    <input
-                      type="email"
-                      value={emailValue}
-                      onChange={(event) => setEmailValue(event.target.value)}
-                      autoFocus
-                    />
-                    <button aria-label="Guardar correo" className={styles.saveRole} disabled={updatingEmail} onClick={() => saveEmail(person.id)} type="button">
-                      <Check size={16} />
-                    </button>
-                    <button aria-label="Cancelar edición de correo" className={styles.cancelRole} disabled={updatingEmail} onClick={() => setEmailEditingId(null)} type="button">
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <span className={styles.emailRow}>
-                    {person.email}
-                    <button aria-label={`Editar correo de ${person.name}`} className={styles.changeEmail} onClick={() => startEmailEdit(person)} type="button">
-                      <Pencil size={13} />
-                    </button>
-                  </span>
-                )}
-                {commentPromptId === person.id && (
-                  <div className={styles.commentPrompt}>
-                    <p>
-                      Este servidor confirmó asistencia a un servicio próximo. Justifica por qué lo desactivas:
-                    </p>
-                    <textarea
-                      value={commentText}
-                      onChange={(event) => setCommentText(event.target.value)}
-                      placeholder="Motivo de la desactivación"
-                      autoFocus
-                    />
-                    <div className={styles.commentActions}>
-                      <button type="button" onClick={cancelCommentPrompt}>Cancelar</button>
-                      <Button
-                        type="button"
-                        disabled={statusUpdatingId === person.id || !commentText.trim()}
-                        onClick={() => confirmDeactivateWithComment(person)}
-                      >
-                        Confirmar desactivación
-                      </Button>
+                <div className={styles.identityText}>
+                  <strong className={styles.name} title={person.name}>{person.name}</strong>
+                  {emailEditingId === person.id ? (
+                    <div className={styles.emailEditor}>
+                      <input
+                        type="email"
+                        value={emailValue}
+                        onChange={(event) => setEmailValue(event.target.value)}
+                        autoFocus
+                      />
+                      <button aria-label="Guardar correo" className={styles.saveRole} disabled={updatingEmail} onClick={() => saveEmail(person.id)} type="button">
+                        <Check size={16} />
+                      </button>
+                      <button aria-label="Cancelar edición de correo" className={styles.cancelRole} disabled={updatingEmail} onClick={() => setEmailEditingId(null)} type="button">
+                        <X size={16} />
+                      </button>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <span className={styles.email} title={person.email}>{person.email}</span>
+                  )}
+                </div>
               </div>
-              <div className={styles.actions}>
-                {editingId === person.id ? (
-                  <div className={styles.roleEditor}>
-                    <div className={styles.roleEditorSelect}>
-                      <ModernSelect ariaLabel={`Rol de ${person.name}`} value={roleId} onChange={setRoleId} options={groupOptions} placeholder="Selecciona un grupo" />
-                    </div>
-                    <button aria-label="Guardar rol" className={styles.saveRole} disabled={updatingRole} onClick={() => saveRole(person.id)} type="button">
-                      <Check size={16} />
-                    </button>
-                    <button aria-label="Cancelar cambio de rol" className={styles.cancelRole} disabled={updatingRole} onClick={() => setEditingId(null)} type="button">
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className={styles.roleActions}>
-                    <span className={styles.group}>{person.group.name}</span>
-                    <button className={styles.changeRole} onClick={() => startRoleEdit(person)} type="button">
-                      <Pencil size={15} /> Cambiar rol
-                    </button>
-                  </div>
-                )}
-                <button
-                  className={person.active ? styles.deactivateAction : styles.reactivateAction}
-                  disabled={statusUpdatingId === person.id}
-                  onClick={() => changeStatus(person, !person.active, null)}
-                  type="button"
-                >
-                  {person.active ? 'Desactivar' : 'Reactivar'}
-                </button>
+
+              <div className={styles.rolCell}>
+                <Badge dot={false} tone={roleTone(person.group.name)}>{person.group.name}</Badge>
               </div>
+
+              <div className={styles.estadoCell}>
+                <Badge tone={person.active ? 'success' : 'danger'}>{person.active ? 'Activo' : 'Inactivo'}</Badge>
+              </div>
+
+              {editingId === person.id ? (
+                <div className={styles.roleEditorCell}>
+                  <div className={styles.roleEditorSelect}>
+                    <ModernSelect ariaLabel={`Rol de ${person.name}`} value={roleId} onChange={setRoleId} options={groupOptions} placeholder="Selecciona un grupo" />
+                  </div>
+                  <button aria-label="Guardar rol" className={styles.saveRole} disabled={updatingRole} onClick={() => saveRole(person.id)} type="button">
+                    <Check size={16} />
+                  </button>
+                  <button aria-label="Cancelar cambio de rol" className={styles.cancelRole} disabled={updatingRole} onClick={() => setEditingId(null)} type="button">
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.actionsCell}>
+                  <RowActionsMenu
+                    ariaLabel={`Acciones para ${person.name}`}
+                    title={person.name}
+                    subtitle={person.email}
+                    items={[
+                      { key: 'rol', label: 'Cambiar rol', icon: Pencil, onClick: () => startRoleEdit(person) },
+                      { key: 'correo', label: 'Editar correo', icon: Mail, onClick: () => startEmailEdit(person) },
+                      {
+                        key: 'estado',
+                        label: person.active ? 'Desactivar' : 'Reactivar',
+                        icon: person.active ? UserX : UserCheck,
+                        tone: person.active ? 'danger' : undefined,
+                        disabled: statusUpdatingId === person.id,
+                        onClick: () => changeStatus(person, !person.active, null),
+                      },
+                    ]}
+                  />
+                </div>
+              )}
+
+              {commentPromptId === person.id && (
+                <div className={styles.commentPrompt}>
+                  <p>
+                    Este servidor confirmó asistencia a un servicio próximo. Justifica por qué lo desactivas:
+                  </p>
+                  <textarea
+                    value={commentText}
+                    onChange={(event) => setCommentText(event.target.value)}
+                    placeholder="Motivo de la desactivación"
+                    autoFocus
+                  />
+                  <div className={styles.commentActions}>
+                    <button className={styles.commentCancel} type="button" onClick={cancelCommentPrompt}>Cancelar</button>
+                    <Button
+                      type="button"
+                      disabled={statusUpdatingId === person.id || !commentText.trim()}
+                      onClick={() => confirmDeactivateWithComment(person)}
+                    >
+                      Confirmar desactivación
+                    </Button>
+                  </div>
+                </div>
+              )}
             </article>
           ))}
-          {visiblePeople.length === 0 && <p className={styles.empty}>No hay servidores que coincidan con esta búsqueda.</p>}
+          {totalItems === 0 && <p className={styles.empty}>No hay servidores que coincidan con esta búsqueda.</p>}
         </div>
+
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
       </section>
 
       {modalOpen && (

@@ -16,6 +16,10 @@
   background: currentColor;
 }
 
+.noDot::before {
+  display: none;
+}
+
 .neutral {
   background: var(--color-neutral-bg);
   color: var(--color-text-muted);
@@ -34,4 +38,14 @@
 .success {
   background: var(--color-success-bg);
   color: var(--color-success);
+}
+
+.info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.violet {
+  background: var(--color-violet-bg);
+  color: var(--color-violet);
 }

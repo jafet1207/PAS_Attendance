@@ -1,0 +1,152 @@
+.trigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+}
+
+.menu {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  padding: var(--space-1);
+  z-index: 60;
+}
+
+.menuItem {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.875rem;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  text-align: left;
+  width: 100%;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--color-surface-soft);
+}
+
+.menuItem:disabled,
+.sheetItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dangerItem {
+  color: var(--color-danger);
+}
+
+.dangerItem:hover,
+.dangerItem:focus-visible {
+  background: var(--color-danger-bg);
+}
+
+.sheetOverlay {
+  align-items: flex-end;
+  background: rgba(16, 42, 46, 0.4);
+  display: flex;
+  inset: 0;
+  position: fixed;
+  z-index: 70;
+}
+
+.sheet {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-2);
+  padding-bottom: var(--space-4);
+  width: 100%;
+}
+
+.sheetHeader {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-3);
+}
+
+.sheetIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sheetIdentity strong {
+  font-size: 0.9375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheetIdentity span {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheetClose {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 4px;
+}
+
+.sheetItem {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.9375rem;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  text-align: left;
+  width: 100%;
+}
+
+.sheetItem:hover,
+.sheetItem:focus-visible {
+  background: var(--color-surface-soft);
+}
+
+.sheetItem.dangerItem {
+  color: var(--color-danger);
+}
+
+.sheetItem.dangerItem:hover,
+.sheetItem.dangerItem:focus-visible {
+  background: var(--color-danger-bg);
+}

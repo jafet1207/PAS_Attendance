@@ -1,18 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react'
+import { useOutsideClose } from '../../hooks/useOutsideClose'
 import styles from './ModernFields.module.css'
-
-function useOutsideClose(refs, close) {
-  useEffect(() => {
-    function onPointerDown(event) {
-      const insideAny = refs.some((ref) => ref.current && ref.current.contains(event.target))
-      if (!insideAny) close()
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [refs, close])
-}
 
 // El menú se renderiza en un portal (fuera del árbol DOM del control) y se posiciona con
 // `position: fixed` a partir del rectángulo real del trigger. Así no lo recorta ningún
@@ -32,7 +22,16 @@ export function ModernSelect({ ariaLabel, options, placeholder, value, onChange,
   function openMenu() {
     if (root.current) {
       const rect = root.current.getBoundingClientRect()
-      setMenuRect({ top: rect.bottom + 6, left: rect.left, width: rect.width })
+      const menuMaxHeight = 250
+      const espacioAbajo = window.innerHeight - rect.bottom
+      // Si no cabe hacia abajo pero sí hacia arriba, abre el menú por encima del control en
+      // vez de dejarlo cortado fuera de la ventana (p. ej. un selector al fondo de una tabla).
+      const abrirHaciaArriba = espacioAbajo < menuMaxHeight && rect.top > espacioAbajo
+      setMenuRect(
+        abrirHaciaArriba
+          ? { bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width }
+          : { top: rect.bottom + 6, left: rect.left, width: rect.width }
+      )
     }
     setHighlightedIndex(selectedIndex >= 0 ? selectedIndex : 0)
     setOpen(true)
@@ -99,7 +98,7 @@ export function ModernSelect({ ariaLabel, options, placeholder, value, onChange,
       type="button"
     ><span className={selected ? '' : styles.placeholder}>{selected?.label ?? placeholder}</span><ChevronDown aria-hidden size={18} /></button>
     {open && menuRect && createPortal(
-      <div aria-label={ariaLabel} className={styles.menu} ref={menuRef} role="listbox" style={{ position: 'fixed', top: menuRect.top, left: menuRect.left, width: menuRect.width }}>
+      <div aria-label={ariaLabel} className={styles.menu} ref={menuRef} role="listbox" style={{ position: 'fixed', ...menuRect }}>
         {options.map((option, index) => (
           <button
             aria-selected={String(option.value) === String(value)}

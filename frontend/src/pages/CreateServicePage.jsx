@@ -83,7 +83,6 @@ export default function CreateServicePage() {
         backTo="/services"
         backLabel="Servicios"
         title="Programar un servicio"
-        description="Define la fecha y hasta cuándo se puede confirmar la asistencia."
         illustration={<CalendarDays size={96} strokeWidth={1} />}
       />
       <form className={styles.form} onSubmit={handleSubmit}>

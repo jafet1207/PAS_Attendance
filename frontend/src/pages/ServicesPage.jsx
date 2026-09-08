@@ -8,6 +8,8 @@ import ServicesList from '../components/services/ServicesList'
 import Skeleton from '../components/common/Skeleton'
 import ErrorState from '../components/common/ErrorState'
 import Button from '../components/common/Button'
+import Pagination from '../components/common/Pagination'
+import { usePagination } from '../hooks/usePagination'
 import { getServices } from '../services/servicesApi'
 import styles from './ServicesPage.module.css'
 
@@ -51,13 +53,19 @@ export default function ServicesPage() {
 
   const hasFilters = Boolean(search || status)
 
+  const { page, setPage, pageSize, setPageSize, pageItems, totalPages, totalItems } =
+    usePagination(filtered)
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, status, setPage])
+
   return (
     <PageContainer>
       <PageHeader
         title="Servicios"
-        description="Gestiona convocatorias, confirmaciones y asistencia de tus servicios."
         actions={(
-          <Button onClick={() => navigate('/services/new')}>
+          <Button size="sm" onClick={() => navigate('/services/new')}>
             <Plus size={16} />
             Crear servicio
           </Button>
@@ -77,7 +85,17 @@ export default function ServicesPage() {
             onStatusChange={setStatus}
             statuses={statuses}
           />
-          <ServicesList services={filtered} hasFilters={hasFilters} onClearFilters={clearFilters} />
+          <div className={styles.tableWrapper}>
+            <ServicesList services={pageItems} hasFilters={hasFilters} onClearFilters={clearFilters} />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
         </div>
       )}
     </PageContainer>

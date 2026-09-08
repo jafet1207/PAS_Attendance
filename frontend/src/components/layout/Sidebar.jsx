@@ -1,5 +1,7 @@
-import { NavLink, useLocation } from 'react-router-dom'
-import { Calendar, Church, Users } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Calendar, ChevronDown, Church, LogOut, Users } from 'lucide-react'
+import { useOutsideClose } from '../../hooks/useOutsideClose'
 import styles from './Sidebar.module.css'
 
 const NAV_ITEMS = [
@@ -17,8 +19,19 @@ const NAV_ITEMS = [
   },
 ]
 
-export default function Sidebar({ open, onNavigate }) {
+export default function Sidebar({ open, onNavigate, onLogout }) {
   const { pathname } = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const navigate = useNavigate()
+  const userMenuRef = useRef(null)
+
+  useOutsideClose([userMenuRef], () => setMenuOpen(false))
+
+  async function handleLogout() {
+    setMenuOpen(false)
+    await onLogout()
+    navigate('/login')
+  }
 
   return (
     <>
@@ -45,6 +58,22 @@ export default function Sidebar({ open, onNavigate }) {
             </NavLink>
           ))}
         </nav>
+
+        <div className={styles.userMenu} ref={userMenuRef}>
+          {menuOpen && (
+            <div className={styles.dropdown} role="menu">
+              <button className={styles.dropdownItem} onClick={handleLogout} role="menuitem">
+                <LogOut size={16} />
+                Cerrar sesión
+              </button>
+            </div>
+          )}
+          <button className={styles.userButton} onClick={() => setMenuOpen((v) => !v)} aria-haspopup="menu" aria-expanded={menuOpen}>
+            <span className={styles.avatar}>C</span>
+            <span className={styles.roleLabel}>Coordinación</span>
+            <ChevronDown size={16} />
+          </button>
+        </div>
       </aside>
       {open && <div className={styles.overlay} onClick={onNavigate} aria-hidden="true" />}
     </>

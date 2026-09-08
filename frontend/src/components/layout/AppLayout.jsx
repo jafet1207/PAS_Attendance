@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
-import AppFooter from './AppFooter'
 import styles from './AppLayout.module.css'
 
 export default function AppLayout({ onLogout, children }) {
@@ -15,11 +14,10 @@ export default function AppLayout({ onLogout, children }) {
 
   return (
     <div className={styles.shell}>
-      <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
+      <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} onLogout={onLogout} />
       <div className={styles.column}>
-        <TopBar onLogout={onLogout} onOpenSidebar={() => setSidebarOpen(true)} />
+        <TopBar onOpenSidebar={() => setSidebarOpen(true)} />
         <main className={styles.main}>{children}</main>
-        <AppFooter />
       </div>
     </div>
   )

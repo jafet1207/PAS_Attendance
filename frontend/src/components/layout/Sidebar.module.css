@@ -2,6 +2,7 @@
   width: var(--sidebar-width);
   flex-shrink: 0;
   background: var(--color-primary);
+  border-radius: 0;
   color: white;
   display: flex;
   flex-direction: column;
@@ -39,6 +40,7 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-4);
+  flex: 1;
 }
 
 .navLink,
@@ -63,6 +65,79 @@
 .navLinkActive {
   background: var(--color-primary-container);
   color: white;
+}
+
+.userMenu {
+  position: relative;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: var(--space-3);
+}
+
+.userButton {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  width: 100%;
+}
+
+.userButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.avatar {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.roleLabel {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.dropdown {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  bottom: calc(100% + var(--space-2));
+  box-shadow: var(--shadow-sm);
+  left: var(--space-3);
+  overflow: hidden;
+  position: absolute;
+  right: var(--space-3);
+}
+
+.dropdownItem {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  width: 100%;
+}
+
+.dropdownItem:hover {
+  background: var(--color-bg);
 }
 
 .overlay {

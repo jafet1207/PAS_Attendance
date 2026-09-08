@@ -1,5 +1,5 @@
 .wrapper {
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-3);
 }
 
 .back {
@@ -19,7 +19,7 @@
 .row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-4);
   flex-wrap: wrap;
   position: relative;
@@ -30,19 +30,12 @@
 }
 
 .title {
-  margin: 0 0 var(--space-1);
+  margin: 0;
   font-size: clamp(1.75rem, 4vw, 2.25rem);
   font-weight: 650;
   letter-spacing: -0.035em;
   line-height: 1.2;
   color: var(--color-text);
-}
-
-.description {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-size: 1rem;
-  line-height: 1.55;
 }
 
 .actions {
