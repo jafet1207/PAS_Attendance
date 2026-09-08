@@ -43,14 +43,18 @@ export class ServicioModel {
 
   /** Congela, para un servicio que ya cerró, cuántos participantes estaban convocados/confirmados
    * en ese momento. A partir de ahí, desactivar o reactivar servidores ya no debe mover estos
-   * números (solo aplican a servicios cuya ventana de confirmación todavía está abierta). */
+   * números (solo aplican a servicios cuya ventana de confirmación todavía está abierta).
+   * `AND convocados_congelados IS NULL` hace el `UPDATE` seguro de repetir: quien la llama
+   * (`obtenerServiciosEnriquecidos`) lo hace de forma perezosa desde un GET la primera vez que
+   * ve un servicio recién cerrado, así que dos peticiones concurrentes podrían intentarlo a la
+   * vez; con la guarda, la segunda no pisa nada (no-op) en vez de repetir la misma escritura. */
   static async congelarConteo(
     id: number,
     convocados: number,
     confirmados: number
   ): Promise<void> {
     await query(
-      'UPDATE Servicio SET convocados_congelados = $1, confirmados_congelados = $2 WHERE id = $3',
+      'UPDATE Servicio SET convocados_congelados = $1, confirmados_congelados = $2 WHERE id = $3 AND convocados_congelados IS NULL',
       [convocados, confirmados, id]
     );
   }

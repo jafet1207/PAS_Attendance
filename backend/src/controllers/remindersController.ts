@@ -5,6 +5,18 @@ function esSesionDeCoordinador(req: Request): boolean {
   return !!(req.session && req.session.coordinador_autenticado);
 }
 
+/** Cuerpo de la petición con un arreglo de IDs no numérico (p. ej. `["abc"]`): se responde 400
+ * en vez de dejar que `Number(...)` produzca `NaN` y el ciclo simplemente no procese nada. */
+export class SolicitudInvalidaError extends Error {}
+
+function idsNumericos(valor: unknown, campo: string): number[] {
+  const ids = (valor as unknown[]).map(Number);
+  if (ids.some((id) => !Number.isFinite(id))) {
+    throw new SolicitudInvalidaError(`${campo} debe ser un arreglo de números.`);
+  }
+  return ids;
+}
+
 /**
  * `participanteIds` solo se honra cuando `NODE_ENV === 'test'` (mismo patrón que `db/index.ts`
  * para elegir `TEST_DATABASE_URL`): permite que las pruebas de integración acoten el barrido a
@@ -24,10 +36,10 @@ export function opcionesDesdeCuerpo(req: Request): OpcionesCicloRecordatorios {
     // Normalizado a number: los IDs de servicio se comparan por igualdad estricta contra
     // `Servicio.id` (number) en recordatoriosService.ts, y el body es JSON externo al cliente
     // (p. ej. `useParams()` en React entrega el ID como string).
-    opciones.servicioIds = body.servicioIds.map(Number);
+    opciones.servicioIds = idsNumericos(body.servicioIds, 'servicioIds');
   }
   if (esPrueba && Array.isArray(body.participanteIds)) {
-    opciones.participanteIds = body.participanteIds.map(Number);
+    opciones.participanteIds = idsNumericos(body.participanteIds, 'participanteIds');
   }
   return opciones;
 }
@@ -53,6 +65,10 @@ export class RemindersController {
       });
       res.json(resumen);
     } catch (error) {
+      if (error instanceof SolicitudInvalidaError) {
+        res.status(400).json({ error: error.message });
+        return;
+      }
       console.error('[RemindersController.triggerReminders Error]', error);
       res.status(500).json({ error: 'Error al ejecutar el ciclo de recordatorios.' });
     }

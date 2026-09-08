@@ -226,10 +226,14 @@ pruebas; en CI (sin `GMAIL_USER`) no debería reproducirse.
 **Revisión de entrega (`/revisar-entrega` sobre los 5 commits sin pushear):** dictamen "Listo con
 seguimiento". Encontrado y corregido: `ESTADO_IMPLEMENTACION.md` no tenía filas para las Etapas 8
 y 9 pese a estar completas e implementadas — la tabla de estado quedaba desactualizada respecto al
-código ya commiteado. Quedan dos hallazgos menores (P3, sin corregir por ahora): `serviciosService.ts`
-escribe (congela conteos) dentro de una función de lectura usada por un `GET`, y
-`remindersController.ts` no valida que `servicioIds`/`participanteIds` sean numéricos antes de
-`Number(...)` (falla en silencio con `NaN`, sin riesgo de seguridad, en vez de responder 400).
+código ya commiteado.
+
+Los dos hallazgos menores (P3) también se corrigieron a pedido del usuario: `remindersController.ts`
+ahora valida que `servicioIds`/`participanteIds` sean numéricos y responde 400 (`SolicitudInvalidaError`)
+en vez de dejar que `Number(...)` produzca `NaN` en silencio; `ServicioModel.congelarConteo` agrega
+`AND convocados_congelados IS NULL` al `UPDATE` como defensa ante dos peticiones `GET` concurrentes
+que intenten congelar el mismo servicio recién cerrado a la vez (no se movió la escritura fuera del
+GET: hacerlo habría cambiado cuándo se congela el conteo, un riesgo mayor que el que resolvía).
 
 ---
 

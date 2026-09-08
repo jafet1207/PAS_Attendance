@@ -4,7 +4,7 @@ import { Request } from 'express';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
 import { generarIcs, ejecutarCicloDeRecordatorios } from '../src/services/recordatoriosService.js';
-import { opcionesDesdeCuerpo } from '../src/controllers/remindersController.js';
+import { opcionesDesdeCuerpo, SolicitudInvalidaError } from '../src/controllers/remindersController.js';
 import { estaEnVentanaDeEnvioRecordatorio } from '../src/services/serviciosService.js';
 import { ScriptedMailer, MockMailer, GmailMailer, Mailer } from '../src/mailer/index.js';
 import { RespuestaModel } from '../src/models/respuesta.model.js';
@@ -103,6 +103,14 @@ describe('Etapa 5: Reglas de dominio en memoria', () => {
     } finally {
       process.env.NODE_ENV = nodeEnvOriginal;
     }
+  });
+
+  it('RN-13: opcionesDesdeCuerpo rechaza servicioIds no numéricos en vez de convertirlos en NaN', () => {
+    const reqConSesion = {
+      session: { coordinador_autenticado: true },
+      body: { servicioIds: ['abc'] },
+    } as unknown as Request;
+    expect(() => opcionesDesdeCuerpo(reqConSesion)).toThrow(SolicitudInvalidaError);
   });
 });
 
@@ -411,6 +419,12 @@ describe('Etapa 5: Flujo de éxito contra base de datos real', () => {
       .get('/api/enviar-recordatorios')
       .set('Authorization', 'Bearer clave-incorrecta');
     expect(res.status).toBe(401);
+  });
+
+  it('POST /api/enviar-recordatorios con sesión de coordinador y servicioIds no numéricos retorna 400', async () => {
+    const res = await agent.post('/api/enviar-recordatorios').send({ servicioIds: ['no-es-un-id'] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/servicioIds/);
   });
 
   // RemindersController solo honra servicioIds/participanteIds en el cuerpo cuando
