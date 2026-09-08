@@ -166,6 +166,50 @@ confirmación construidos para otra cosa. Con esa razón confirmada, se actualiz
 `FICHA-APROBACION.md` (fila "Queda afuera" y una entrada fechada "Cambio de alcance") y
 `PROYECTO.md` (nueva sección "Cambios de Alcance"), tal como exige la consigna.
 
+## 2026-09-07, noche — Etapa 7: sesión persistida y despliegue real en Vercel
+
+### Despliegue real: causa raíz y correcciones (gobernanza)
+
+Al desplegar por primera vez contra una cuenta real de Vercel, una serie de fallos aparentemente
+inconexos (extensión de archivo no detectada como función, `includeFiles` sin efecto, un empaque
+autocontenido que agotaba la memoria del compilador de Vercel, archivos de datos no-JS ausentes en
+tiempo de ejecución) resultaron tener la misma causa raíz: `backend/` vivía como paquete npm
+separado, fuera del árbol de dependencias que las herramientas de Vercel rastrean de forma
+confiable. La corrección definitiva —adoptar *npm workspaces*— revirtió una decisión de diseño ya
+tomada en DM-6 ("sin *workspaces*, costo marginal casi nulo de mantenerlos separados"), motivada
+por evidencia real y repetida del despliegue, no por preferencia estética. Se le explicó el cambio
+de alcance al usuario antes de implementarlo y se pidió autorización explícita.
+
+Después de resolver el despliegue en sí, un segundo problema (sesión de login sin `Set-Cookie` en
+producción) no se pudo reproducir localmente con `supertest` pese a varios intentos — el entorno
+real de ejecución serverless de Vercel difiere de cualquier simulación local. Una primera hipótesis
+(`trust proxy`) se probó y se demostró localmente que **no** explicaba el síntoma por sí sola, y se
+documentó así en vez de presentarla como la causa confirmada. Se llegó a preparar un prompt de
+traspaso completo para continuar la investigación en una sesión nueva (con todo lo descartado y las
+pistas pendientes), pero el propio fix de `trust proxy`, ya desplegado, resultó ser la corrección
+correcta — confirmado por el usuario probando el login real en producción.
+
+### Hallazgo no relacionado, reportado por separado
+
+Al migrar a *npm workspaces*, la suite completa pasó de 87/87 a 86/87: un test de
+`ventanaDeConfirmacionAbierta` (RN-2) falla de forma intermitente por un problema preexistente del
+propio test, no de la migración — su helper `addDays` calcula el día con `new Date().toISOString()`
+(UTC) en vez de la zona horaria de negocio (Costa Rica, UTC-6), así que cerca de la medianoche UTC
+locale puede cruzar un límite de día distinto al que usa la lógica de producción. No se corrigió en
+el momento (fuera del alcance de la tarea en curso) — queda pendiente como hallazgo reportado.
+
+### Limpieza de historial (gobernanza)
+
+A pedido explícito del usuario ("necesito limpiar un poco los commits... al menos no tener tantos"),
+los 12 commits de esta etapa (desde `feat(fullstack): etapa 7...` hasta el fix de `trust proxy`) se
+aplastaron (`git reset --soft` + recommit) en 2 commits — uno para el código, otro para los ajustes
+de CI — verificando antes del push que el árbol final fuera *idéntico byte a byte* al que ya estaba
+desplegado (`git diff <commit-viejo> <commit-nuevo>` vacío). Como ya estaba publicado en `origin/main`,
+esto requirió `git push --force`, que GitHub rechazó por la regla de protección de rama ("Cannot
+force-push to this branch") configurada en la Etapa 6 para la demo de CI; el usuario activó
+temporalmente "Allow force pushes" en el ruleset para permitirlo. Se pidió autorización explícita
+para el squash y, por separado, para el force-push, antes de ejecutar cualquiera de los dos.
+
 ---
 
 ## Qué se revisó siempre / qué se delegó sin revisión

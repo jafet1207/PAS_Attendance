@@ -10,5 +10,8 @@
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/confirm/(.*)", "destination": "/api/index" },
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    { "path": "/api/enviar-recordatorios", "schedule": "0 13 * * *" }
   ]
 }

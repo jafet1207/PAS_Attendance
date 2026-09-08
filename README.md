@@ -66,7 +66,7 @@ cp .env.example backend/.env
 | `SECRET_KEY` | Sí en producción | Firma las cookies de sesión y los tokens de confirmación (HMAC/JWT). |
 | `CRON_SECRET` | Sí para automatizar recordatorios | Permite invocar `/api/enviar-recordatorios` con `Authorization: Bearer <CRON_SECRET>` sin sesión de coordinador (para un cron externo). |
 | `COORDINADOR_PASSWORD` | Sí | Contraseña única del panel de coordinación (no hay cuentas individuales todavía). |
-| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | No | Si se configuran ambas, los correos (confirmaciones y recordatorios) se envían de verdad por Gmail SMTP. Si se omiten, se usa un `MockMailer` que solo registra el intento en consola — así se puede levantar y demostrar el prototipo sin credenciales reales. |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | No | Si se configuran ambas, los correos se envían de verdad por Gmail SMTP **solo cuando el destinatario es `@gmail.com`**; para cualquier otro dominio se simula el envío (mismo comportamiento que `MockMailer`). Si se omiten ambas variables, todos los envíos se simulan. `GMAIL_APP_PASSWORD` se genera en [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (requiere verificación en dos pasos activada en esa cuenta de Gmail). |
 | `APP_BASE_URL` | No (default `http://localhost:5000`) | Host público que se usa para construir los enlaces de confirmación dentro de los correos de recordatorio. |
 | `FRONTEND_ORIGIN` | No | Origen adicional permitido por CORS. En el despliegue de un solo dominio (Vercel, ver más abajo) no hace falta. |
 
@@ -107,6 +107,19 @@ Con sesión de coordinador activa en el navegador, o con `CRON_SECRET` configura
 curl -X POST http://localhost:5000/api/enviar-recordatorios \
   -H "Authorization: Bearer <CRON_SECRET>"
 ```
+
+### Envío automático (RN-7)
+
+En producción (Vercel), un cron automático (`vercel.json`, sección `crons`) invoca
+`/api/enviar-recordatorios` una vez al día (13:00 UTC = 7:00 a.m. Costa Rica). Vercel autentica
+esa llamada automáticamente con `Authorization: Bearer <CRON_SECRET>` usando la variable de
+entorno `CRON_SECRET` del proyecto — no requiere configuración adicional más allá de tenerla
+definida.
+
+Un participante recibe recordatorio solo cuando faltan exactamente 2 días, 1 día, o es el mismo
+día del cierre de confirmación (RN-7) — el día del cierre sigue abierto para confirmar hasta
+medianoche (RN-2). Combinado con el tope de 3 envíos exitosos (RN-6), cada participante recibe
+como máximo un recordatorio por cada uno de esos 3 días.
 
 ## Pruebas
 
