@@ -25,5 +25,8 @@ Thumbs.db
 # propios del proyecto (.claude/skills/, .claude/commands/, .claude/launch.json).
 .claude/settings.local.json
 
+# Vercel (metadatos locales de vinculación del proyecto, no el vercel.json de la raíz)
+.vercel
+
 # Temporary & Backups
 .relocation-backup-*/

@@ -1,6 +1,6 @@
 # Plan de Implementación por Etapas Verticales
 
-El desarrollo del proyecto se estructura en **6 etapas incrementales y verificables** siguiendo la metodología de **rebanadas verticales (Vertical Slices)** de la skill `/desarrollar-por-etapas`. Cada etapa integra su componente en el Frontend, su API/lógica en el Backend y sus pruebas automatizadas.
+El desarrollo del proyecto se estructura en **7 etapas incrementales y verificables** siguiendo la metodología de **rebanadas verticales (Vertical Slices)** de la skill `/desarrollar-por-etapas`. Cada etapa integra su componente en el Frontend, su API/lógica en el Backend y sus pruebas automatizadas.
 
 ---
 
@@ -23,6 +23,9 @@ El desarrollo del proyecto se estructura en **6 etapas incrementales y verificab
                              │
                              ▼
 [ Etapa 6: Integración Fullstack, Scripts de Arranque y Documentación ]
+                             │
+                             ▼
+[ Etapa 7: Persistencia de Sesión y Despliegue Serverless en Vercel ]
 ```
 
 ---
@@ -105,3 +108,20 @@ El desarrollo del proyecto se estructura en **6 etapas incrementales y verificab
   - `README.md` actualizado con diagrama de arquitectura, guía de inicio rápido y tabla de endpoints.
 - **Pruebas:** Suite completa de Vitest ejecutándose desde la raíz (45+ pruebas pasando) y `npm run build` ejecutándose limpiamente para ambos proyectos.
 - **Criterio de Finalización:** Repositorio 100% operativo, compila sin errores y pasa todas las pruebas automatizadas.
+
+---
+
+### Etapa 7: Persistencia de Sesión y Despliegue Serverless en Vercel (Fullstack/Infraestructura)
+- **Objetivo:** Que el sistema pueda desplegarse en Vercel (un solo dominio, frontend + backend) sin depender de un proceso Node persistente, según DM-6 y DM-7 de `DISENO.md`.
+- **Backend:**
+  - `backend/src/app.ts`: reemplaza el `MemoryStore` de `express-session` por `connect-pg-simple` sobre el mismo pool de `pg`.
+  - `backend/src/db/index.ts`: agrega la tabla `session` de forma idempotente (mismo patrón que el resto del esquema).
+  - `backend/src/config/env.ts`: variable `FRONTEND_ORIGIN` (o equivalente) para el origen permitido en desarrollo local; en producción de un solo dominio no hace falta CORS adicional.
+  - `backend/api/index.ts` (o ruta equivalente en la raíz, según lo que exija Vercel): punto de entrada serverless que reexporta `createApp()`.
+- **Infraestructura:**
+  - `vercel.json` en la raíz del repositorio: `builds` explícitos para `backend/` (`@vercel/node`) y `frontend/` (`@vercel/static-build`), `routes`/`rewrites` para `/api/*` y `/confirm/*` hacia el backend, el resto hacia el build estático del frontend.
+- **Pruebas:**
+  - Persistencia real de sesión contra Postgres: iniciar sesión con un cliente, reutilizar la misma cookie desde un cliente/conexión nueva (simulando una invocación serverless distinta) y confirmar que sigue autenticado.
+  - Regresión: sin cookie, sigue sin acceso (401), igual que antes del cambio.
+- **Criterio de Finalización:** pruebas verdes localmente (incluida la de persistencia de sesión), y un primer despliegue real accesible en Vercel donde el login y el recorrido principal funcionan de punta a punta — verificado manualmente por el usuario, dado que el desarrollo no tiene acceso a la cuenta de Vercel.
+- **Riesgo conocido, sin verificar en este entorno:** no fue posible ejecutar `vercel dev` ni un despliegue real durante el desarrollo (sin cuenta de Vercel conectada en este entorno); la configuración de `vercel.json` puede requerir ajustes en el primer despliegue real.

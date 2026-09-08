@@ -78,3 +78,4 @@ El sistema debe operar de forma desacoplada con un **Frontend en React 19 + Vite
 - **RNF-3 (Compatibilidad y UI):** Cumplimiento estricto con los contratos JSON esperados por el frontend en React 19.
 - **RNF-4 (Accesibilidad y Estilo):** Diseño con contraste WCAG AA, paleta visual con verde institucional (`#2E5A44`) y componentes responsivos en CSS Modules.
 - **RNF-5 (Pruebas Automatizadas):** Cobertura mediante pruebas unitarias y de integración en Vitest para cada etapa vertical.
+- **RNF-6 (Despliegue Serverless):** El sistema debe poder desplegarse en Vercel (frontend y backend bajo el mismo dominio) sin depender de un proceso Node persistente, usando PostgreSQL administrado (Neon) como única persistencia — incluida la sesión del coordinador, que no puede depender de memoria de proceso.

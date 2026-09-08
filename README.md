@@ -46,8 +46,7 @@ Detalle de componentes, contratos entre módulos y decisiones de arquitectura en
 git clone https://github.com/jafet1207/PAS_Attendance.git
 cd PAS_Attendance
 
-npm install --prefix backend
-npm install --prefix frontend
+npm install
 ```
 
 ## Configuración
@@ -69,6 +68,7 @@ cp .env.example backend/.env
 | `COORDINADOR_PASSWORD` | Sí | Contraseña única del panel de coordinación (no hay cuentas individuales todavía). |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | No | Si se configuran ambas, los correos (confirmaciones y recordatorios) se envían de verdad por Gmail SMTP. Si se omiten, se usa un `MockMailer` que solo registra el intento en consola — así se puede levantar y demostrar el prototipo sin credenciales reales. |
 | `APP_BASE_URL` | No (default `http://localhost:5000`) | Host público que se usa para construir los enlaces de confirmación dentro de los correos de recordatorio. |
+| `FRONTEND_ORIGIN` | No | Origen adicional permitido por CORS. En el despliegue de un solo dominio (Vercel, ver más abajo) no hace falta. |
 
 **Nunca se necesita ejecutar una migración a mano:** al arrancar, el backend crea o actualiza el
 esquema (tablas, índices, datos base de los 4 grupos) de forma idempotente.
@@ -127,6 +127,29 @@ para revisión manual, por diseño del proyecto.
 npm run build   # compila backend (tsc) y frontend (vite build)
 npm start       # sirve el backend compilado (dist/)
 ```
+
+## Despliegue en Vercel
+
+El proyecto está preparado para desplegarse como **un solo proyecto de Vercel** (mismo dominio
+para frontend y backend — ver DM-6 en `DISENO.md`), no como dos dominios separados.
+
+1. Conectar el repositorio en Vercel con el **Root Directory apuntando a la raíz del repositorio**
+   (no a `frontend/`).
+2. Configurar en el dashboard de Vercel las variables de entorno de la tabla de arriba
+   (`DATABASE_URL`, `SECRET_KEY`, `CRON_SECRET`, `COORDINADOR_PASSWORD`, y opcionalmente
+   `GMAIL_USER`/`GMAIL_APP_PASSWORD`). No hace falta `FRONTEND_ORIGIN` en este esquema de un solo
+   dominio.
+3. `vercel.json` en la raíz instala las dependencias (`npm install`, con `frontend/` y `backend/`
+   como *npm workspaces* de un solo árbol de `node_modules`), compila el frontend con Vite
+   (`buildCommand`), y declara `api/index.ts` como función serverless (`functions`). `rewrites`
+   enruta `/api/*` y `/confirm/*` hacia esa función; el resto sirve la SPA.
+
+La sesión del coordinador se persiste en la misma base Postgres (`connect-pg-simple`, DM-7), no
+en memoria — necesario porque cada invocación serverless es una instancia aislada y efímera.
+
+Esta configuración ya se probó contra un despliegue real de Vercel — ver DM-6 en `DISENO.md`
+para el detalle de los hallazgos (varios intentos previos fallaron por tener `backend/` como un
+paquete npm separado; la corrección final fue adoptar *npm workspaces*).
 
 ## Estructura del repositorio
 

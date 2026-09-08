@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple';
 import { config } from './config/env.js';
+import { getPool } from './db/index.js';
 import { AuthController } from './controllers/authController.js';
 import { GroupsController } from './controllers/groupsController.js';
 import { ServicesController } from './controllers/servicesController.js';
@@ -14,6 +16,13 @@ import { requireAuth, requireReminderAuth } from './middlewares/auth.js';
 export function createApp(): express.Express {
   const app = express();
 
+  // Necesario en Vercel (y cualquier proxy que termine TLS antes de la función): sin esto,
+  // Express ve la conexión interna como HTTP plano y express-session, al tener
+  // cookie.secure=true en producción, omite el Set-Cookie por considerarla insegura.
+  if (config.nodeEnv === 'production') {
+    app.set('trust proxy', 1);
+  }
+
   app.use(
     cors({
       origin: [
@@ -21,6 +30,10 @@ export function createApp(): express.Express {
         'http://127.0.0.1:5173',
         'http://localhost:5000',
         'http://127.0.0.1:5000',
+        // DM-6: en despliegue (Vercel) frontend y backend viven bajo el mismo dominio, así
+        // que en producción normalmente no hace falta ningún origen adicional acá; esta
+        // variable solo importa si el frontend llega a servirse desde un dominio distinto.
+        ...(config.frontendOrigin ? [config.frontendOrigin] : []),
       ],
       credentials: true,
     })
@@ -30,8 +43,19 @@ export function createApp(): express.Express {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // DM-7: la sesión del coordinador se guarda en Postgres (connect-pg-simple), no en memoria
+  // del proceso. En un entorno serverless cada invocación es una instancia aislada y efímera;
+  // el MemoryStore por defecto de express-session no sobrevive entre invocaciones ni se
+  // comparte entre instancias concurrentes.
+  const PgSessionStore = connectPgSimple(session);
   app.use(
     session({
+      store: new PgSessionStore({
+        pool: getPool(),
+        tableName: 'session',
+        createTableIfMissing: false, // la tabla ya la crea initDb(), ver db/index.ts
+        pruneSessionInterval: false, // sin temporizador recurrente: no aplica en serverless
+      }),
       secret: config.secretKey,
       resave: false,
       saveUninitialized: false,

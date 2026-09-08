@@ -9,3 +9,4 @@
 | **Etapa 4** | Tokens y Confirmación Pública Web | Backend/Público | ✅ Completado | `backend/tests/etapa4.test.ts` |
 | **Etapa 5** | Recordatorios Automáticos y Servicio Mailer | Backend/Servicio | ✅ Completado | `backend/tests/etapa5.test.ts` |
 | **Etapa 6** | Integración Fullstack Final y Documentación | Fullstack | ✅ Completado | Suite completa Vitest + Build E2E |
+| **Etapa 7** | Persistencia de Sesión en Postgres (DM-7) y Despliegue Serverless en Vercel con npm workspaces (DM-6) | Fullstack/Infraestructura | ✅ Completado | `backend/tests/etapa7.test.ts` (sesión: 86/87 en suite completa — 1 falla preexistente y no relacionada, ver `BITACORA.md`). Config de Vercel verificada con `vercel build` local (pipeline real, sin desplegar) contra el proyecto real conectado; pendiente confirmación final del usuario tras el último push. |

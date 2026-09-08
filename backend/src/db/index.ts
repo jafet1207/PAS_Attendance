@@ -132,6 +132,21 @@ export async function initDb(): Promise<void> {
       ON CONFLICT (id) DO NOTHING;
     `);
 
+    // Sesión del coordinador (DM-7): esquema oficial de connect-pg-simple. Se crea acá, con el
+    // mismo patrón idempotente que el resto de las tablas, en vez de dejar que la librería la
+    // cree por su cuenta (createTableIfMissing), para mantener el esquema en un solo lugar.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS session (
+        sid VARCHAR NOT NULL COLLATE "default",
+        sess JSON NOT NULL,
+        expire TIMESTAMP(6) NOT NULL,
+        CONSTRAINT session_pkey PRIMARY KEY (sid)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session(expire);
+    `);
+
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_respuesta_participante_servicio ON Respuesta(participante_id, servicio_id);
       CREATE INDEX IF NOT EXISTS idx_intentos_servicio ON Intento_Envio(servicio_id);
@@ -168,6 +183,7 @@ export async function resetDb(): Promise<void> {
   const client = await getPool().connect();
   try {
     await client.query(`
+      DROP TABLE IF EXISTS session CASCADE;
       DROP TABLE IF EXISTS Recordatorios_Lock CASCADE;
       DROP TABLE IF EXISTS Historial_Participante CASCADE;
       DROP TABLE IF EXISTS Intento_Envio CASCADE;

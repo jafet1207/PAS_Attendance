@@ -21,6 +21,30 @@
                               [ PostgreSQL (Neon) ]        [ Mailer: Gmail / Mock ]
 ```
 
+### 1.1 Topología de Despliegue (Vercel, un solo dominio)
+
+Frontend y backend se despliegan bajo el **mismo dominio de Vercel** (un solo proyecto), no en
+dos dominios separados. Esto evita CORS entre dominios distintos y evita debilitar la cookie de
+sesión a `sameSite: 'none'` — el navegador trata todo como *same-origin*, igual que en desarrollo
+local (donde el proxy de Vite ya cumple el mismo papel).
+
+```
+[ Navegador ]
+      │  mismo dominio, ej. https://pas-attendance.vercel.app
+      ▼
+[ Vercel Edge / Enrutamiento ]
+      ├── /api/*, /confirm/*  ──> [ Función serverless Node.js (backend/api/index.ts) ]
+      │                                    │
+      │                                    ▼
+      │                          [ PostgreSQL (Neon) ] ◄── sesión (connect-pg-simple, DM-7)
+      │
+      └── todo lo demás        ──> [ Build estático (frontend/dist), React Router ]
+```
+
+`frontend/` y `backend/` se construyen como dos proyectos independientes dentro del mismo
+despliegue de Vercel (ver DM-6) — no se convierte el repositorio en un *monorepo* de npm
+workspaces; cada uno conserva su propio `package.json` y `node_modules`, igual que hoy.
+
 ---
 
 ## 2. Esquema Relacional de Base de Datos (DDL)
@@ -101,6 +125,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_intento_envio_unico ON Intento_Envio(parti
 
 ### DM-5: `APP_BASE_URL` para los Enlaces de Correo
 - **Razón:** el cuerpo HTML de los recordatorios (`recordatoriosService.ts`) necesita construir URLs absolutas hacia `/confirm/:token` y sus acciones rápidas (`/si`, `/no`). Se agregó la variable de entorno `APP_BASE_URL` (por defecto `http://localhost:5000`) en vez de hardcodear el host, siguiendo el mismo patrón de configuración por entorno que `GMAIL_USER`/`CRON_SECRET`.
+
+### DM-6: Despliegue en un Solo Dominio de Vercel (Frontend + Backend Serverless)
+- **Por qué es mayor:** cambia la arquitectura de despliegue, afecta seguridad (cookies entre dominios) y complejidad operativa.
+- **Opciones consideradas:**
+  - **A. Un solo dominio (elegida):** un proyecto de Vercel, `Root Directory` en la raíz del repositorio, con `vercel.json` construyendo `frontend/` (estático) y `backend/` (funciones serverless) por separado, enrutando `/api/*` y `/confirm/*` al backend y el resto al frontend. Sin CORS entre dominios, cookie de sesión sin cambios (`sameSite: 'lax'`).
+  - **B. Dos dominios separados:** un proyecto de Vercel por cada parte. Requiere CORS con el dominio real del frontend y cambiar la cookie a `sameSite: 'none'` + `secure: true`, debilitando la superficie de la cookie de sesión sin necesidad real.
+- **Decisión:** A. Justificación: resuelve el mismo problema sin tocar la seguridad de la cookie de sesión ya defendida en DM-2.
+- **Consecuencia (revisada tras el despliegue real):** `frontend/` y `backend/` pasaron a ser *npm workspaces* de un único proyecto raíz (`package.json` con `"workspaces": ["backend", "frontend"]`), con un solo árbol de `node_modules` hospedado en la raíz. `vercel.json` usa el esquema moderno (`rewrites`, no `builds`/`routes`): `installCommand: "npm install"`, `buildCommand` compila solo el frontend con Vite, `outputDirectory: "frontend/dist"`, y `functions` declara explícitamente `api/index.ts` (TypeScript sin empaquetar; Vercel lo compila y rastrea sus dependencias él mismo). `rewrites` enruta `/api/*` y `/confirm/*` hacia esa función.
+- **Historial de hallazgos del despliegue real (iterativo, cada uno descartó una hipótesis distinta antes de llegar a la causa raíz):**
+  1. Con `builds`/`routes` explícitos (un build `@vercel/node` para `api/index.ts` fuera de un *workspace*): el rastreador de dependencias no incluye `backend/node_modules` por vivir en un paquete npm separado (`Cannot find package 'express'`).
+  2. `"builds"` en `vercel.json` hace que Vercel ignore por completo `installCommand`/`buildCommand` personalizados (confirmado por la advertencia propia de build de Vercel) — ningún paso de empaquetado previo podía ejecutarse ahí de forma confiable.
+  3. Al migrar a `rewrites` (confirmando en la práctica que sí preserva la ruta original `req.url` — la suposición inicial que motivó elegir `routes` era incorrecta) y empaquetar el backend con `esbuild` en un único archivo autocontenido generado por `buildCommand`: la detección automática de funciones de Vercel escanea el repositorio tal como está en git, no lo que un `buildCommand` genera en tiempo de build, así que el archivo generado nunca se registraba como función.
+  4. Versionando ese bundle (`api/index.cjs`) directamente en git: la extensión `.cjs` no es reconocida por la detección automática de funciones de Vercel.
+  5. Declarando la función explícitamente vía la propiedad `functions` de `vercel.json`: un objeto de configuración vacío (`{}`) es inválido: "Function must contain at least one property".
+  6. Con `functions` válido apuntando al bundle único: el propio compilador de Vercel, al intentar rastrear ese archivo ya empaquetado, entra en un bucle patológico de escaneo de archivos y agota la memoria (reproducido de forma consistente en build local con `vercel build`).
+  7. Volviendo a `api/index.ts` sin empaquetar + `includeFiles: "backend/node_modules/**"`: el build sí completa, pero archivos de datos no-JS requeridos en tiempo de ejecución por dependencias transitivas (p. ej. `codes.json` de `statuses`, usado por Express) quedan fuera del paquete final, incluso con una ruta exacta en `includeFiles`.
+
+  Cada uno de estos hallazgos comparte la misma causa raíz: el backend vivía en un paquete npm separado, fuera del árbol de dependencias que las herramientas de Vercel esperan poder rastrear de forma confiable. La corrección definitiva (adoptar *workspaces*, revirtiendo la decisión original de mantener los paquetes separados) elimina el problema de raíz en vez de parchear sus síntomas uno por uno: verificado con `vercel build` local, que reproduce fielmente el pipeline de Vercel sin necesidad de desplegar.
+
+  **Cuarto hallazgo:** aun con `api/index.cjs` versionado, la detección automática de funciones no lo registraba (confirmado descartando caché de build por completo). Corrección final: declarar la función explícitamente con la propiedad `functions` de `vercel.json` (`"functions": { "api/index.cjs": {} }`), sin depender de ninguna heurística de autodetección.
+
+### DM-7: Sesión del Coordinador Persistida en Postgres, no en Memoria
+- **Por qué es mayor:** afecta seguridad y disponibilidad. En un entorno serverless, cada invocación es una instancia aislada y efímera; la memoria del proceso (donde vive la sesión hoy) no sobrevive entre invocaciones ni se comparte entre instancias concurrentes.
+- **Opciones consideradas:**
+  - **A. `connect-pg-simple` sobre la misma base Neon (elegida):** cambia *dónde* vive el dato de sesión (una tabla `session` en Postgres, creada por la misma librería), sin tocar el mecanismo de autenticación (`express-session`, cookie HTTP-only) ni ningún controlador.
+  - **B. Autenticación sin estado (JWT) para el coordinador:** eliminaría el problema de raíz, pero reemplaza por completo el mecanismo de login ya implementado y defendido (DM-2), para un beneficio que este proyecto no necesita (un único coordinador, sin requisitos de escalado horizontal de sesiones).
+- **Decisión:** A. Es el cambio mínimo que resuelve el problema real sin reabrir una decisión de arquitectura ya aprobada.
+- **Consecuencia:** nueva dependencia (`connect-pg-simple`); la tabla `session` se crea de forma idempotente junto con el resto del esquema (`db/index.ts`), siguiendo el mismo patrón que las demás tablas del proyecto.
 
 ---
 
