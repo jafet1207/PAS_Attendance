@@ -10,6 +10,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  container-type: inline-size;
   overflow: hidden;
 }
 
@@ -67,7 +68,7 @@
 
 .rowsHeader {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px 110px 44px;
+  grid-template-columns: minmax(0, 1fr) 150px 110px 44px;
   gap: var(--space-3);
   padding: 6px var(--space-4);
   background: var(--color-surface-soft);
@@ -81,7 +82,7 @@
   align-items: center;
   display: grid;
   gap: var(--space-3);
-  grid-template-columns: minmax(0, 1fr) 130px 110px 44px;
+  grid-template-columns: minmax(0, 1fr) 150px 110px 44px;
   padding: 7px var(--space-4);
 }
 
@@ -153,11 +154,71 @@
   justify-content: flex-end;
 }
 
-.roleEditorCell {
-  align-items: center;
+/* Por defecto (contenedor angosto) se ve el menú ⋮; el trío de botones directos aparece más
+   abajo, vía @container, tan pronto la tarjeta tenga ancho real para acomodarlos sin apretar
+   la columna de nombre/correo. */
+.inlineActions {
+  display: none;
+}
+
+.menuActions {
   display: flex;
-  gap: var(--space-2);
-  grid-column: 2 / -1;
+}
+
+.inlineActionButton {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.inlineActionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.inlineActionInfo {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.inlineActionViolet {
+  background: var(--color-violet-bg);
+  color: var(--color-violet);
+}
+
+.inlineActionSuccess {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.inlineActionDanger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.inlineActionButton:hover:not(:disabled) {
+  filter: brightness(0.93);
+}
+
+/* Fila en edición de rol: acento sutil (fondo + borde izquierdo verde) para señalar el estado
+   sin sombras, tarjetas ni banners. La segunda regla (mayor especificidad: dos clases) ensancha
+   SOLO la última columna (Acciones) para que quepan los botones "Guardar"/"Cancelar" con texto,
+   sin tocar el ancho de Servidor/Rol/Estado ni desplazarlos — así ninguna otra fila se ve
+   afectada y esta misma fila no salta a una segunda línea de grid. */
+.rowEditingRole {
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+  border-left: 2px solid var(--color-primary);
+  padding-left: calc(var(--space-4) - 2px);
+}
+
+.row.rowEditingRole {
+  grid-template-columns: minmax(0, 1fr) 150px 110px minmax(172px, auto);
 }
 
 .rowInactive {
@@ -233,34 +294,124 @@
   text-align: center;
 }
 
-.roleEditorSelect {
-  min-width: 160px;
-  flex: 1;
+/* Selector de rol inline: ocupa el ancho completo de la celda Rol (la propia celda ya está
+   acotada por la columna de la grilla), con su propio trigger más compacto que el ModernSelect
+   por defecto (52px) para no disparar la altura de la fila. Estilado vía :global(button) —mismo
+   patrón que .filterSelect más arriba— para no tocar ModernFields.module.css y así no afectar
+   ningún otro selector de la aplicación (filtro de grupos, formularios, Ajustes). */
+.roleSelectWrap {
+  width: 100%;
+}
+
+.roleSelectWrap :global(button) {
+  min-height: 38px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.roleSelectWrap :global(button[aria-expanded='true']) {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.roleEditActions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.roleSaveButton,
+.roleCancelButton {
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 5px;
+  height: 36px;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+}
+
+.roleSaveButton {
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  color: white;
+}
+
+.roleSaveButton:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.roleCancelButton {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.roleCancelButton:hover:not(:disabled) {
+  background: var(--color-surface-soft);
+}
+
+.roleSaveButton:disabled,
+.roleCancelButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.roleModalBody {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.roleModalIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.roleModalIdentity span {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
 }
 
 .saveRole,
 .cancelRole {
   align-items: center;
-  background: transparent;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  color: var(--color-primary);
   cursor: pointer;
   display: inline-flex;
-  font-size: 0.8125rem;
-  font-weight: 650;
-  gap: 5px;
-  min-height: 30px;
-  padding: 0 8px;
+  flex-shrink: 0;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
 }
 
 .saveRole {
-  background: var(--color-primary);
-  color: white;
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .cancelRole {
+  background: var(--color-surface);
+  border-color: var(--color-border);
   color: var(--color-text-muted);
+}
+
+.saveRole:hover:not(:disabled),
+.cancelRole:hover:not(:disabled) {
+  filter: brightness(0.93);
+}
+
+.saveRole:disabled,
+.cancelRole:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .form {
@@ -325,6 +476,22 @@
   padding: 0 var(--space-3);
 }
 
+/* Tarjeta con ancho real de sobra (independiente del viewport, ver container-type en .list):
+   se muestran los 3 botones de acción directos en vez de esconderlos detrás del menú ⋮. */
+@container (min-width: 640px) {
+  .rowsHeader,
+  .row {
+    grid-template-columns: minmax(0, 1fr) 150px 110px 132px;
+  }
+  .inlineActions {
+    display: flex;
+    gap: 6px;
+  }
+  .menuActions {
+    display: none;
+  }
+}
+
 @media (max-width: 767px) {
   .controls {
     flex-direction: column;
@@ -345,12 +512,16 @@
   .rolCell {
     justify-self: end;
   }
-  .roleEditorCell {
-    flex-wrap: wrap;
-    grid-column: 1 / -1;
-  }
   .formActions {
     flex-direction: column-reverse;
     align-items: stretch;
+  }
+  /* En mobile el menú siempre es un bottom sheet táctil, sin importar si el contenedor "cabe":
+     es una decisión de UX para el dedo, no de espacio disponible. */
+  .inlineActions {
+    display: none;
+  }
+  .menuActions {
+    display: flex;
   }
 }

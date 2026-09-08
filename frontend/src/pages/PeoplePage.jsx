@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Filter, Mail, Pencil, Plus, Search, UserCheck, UserX, Users, X } from 'lucide-react'
+import { Check, Crown, Filter, Mail, Pencil, Plus, Search, Star, User, UserCheck, UserPlus, UserX, Users, X } from 'lucide-react'
 import Badge from '../components/common/Badge'
 import Button from '../components/common/Button'
 import ErrorState from '../components/common/ErrorState'
@@ -36,6 +36,19 @@ function roleTone(name) {
   return ROLE_TONES[hash % ROLE_TONES.length]
 }
 
+// Icono decorativo por rol para el selector de "Cambiar rol" (no representa ninguna regla de
+// negocio). Cubre los 4 grupos reales del sistema (config/env.ts::GRUPOS_BASE); cualquier grupo
+// nuevo que no esté en el mapa cae al ícono genérico.
+const ROLE_ICONS = { Servidor: User, Inducción: UserPlus, Líder: Star, Director: Crown }
+function roleIcon(name) {
+  return ROLE_ICONS[name] ?? Users
+}
+
+// Mismo umbral que RowActionsMenu (MOBILE_BREAKPOINT): por debajo de este ancho, "Cambiar rol"
+// se abre en un modal en vez de editar inline la fila, que quedaría demasiado angosta para
+// selector + Estado + Guardar/Cancelar en una sola línea.
+const MOBILE_BREAKPOINT = 767
+
 export default function PeoplePage() {
   const [people, setPeople] = useState(null)
   const [groups, setGroups] = useState(null)
@@ -48,6 +61,7 @@ export default function PeoplePage() {
   const [error, setError] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [roleId, setRoleId] = useState('')
+  const [roleEditIsModal, setRoleEditIsModal] = useState(false)
   const [updatingRole, setUpdatingRole] = useState(false)
   const [emailEditingId, setEmailEditingId] = useState(null)
   const [emailValue, setEmailValue] = useState('')
@@ -143,7 +157,13 @@ export default function PeoplePage() {
   function startRoleEdit(person) {
     setEditingId(person.id)
     setRoleId(String(person.group.id))
+    setRoleEditIsModal(window.innerWidth <= MOBILE_BREAKPOINT)
     setError(null)
+  }
+
+  function cancelRoleEdit() {
+    setEditingId(null)
+    setRoleEditIsModal(false)
   }
 
   async function saveRole(personId) {
@@ -155,6 +175,7 @@ export default function PeoplePage() {
         current.map((person) => (person.id === personId ? { ...person, group: updated.group } : person))
       )
       setEditingId(null)
+      setRoleEditIsModal(false)
     } catch (requestError) {
       setError(requestError.message || 'No fue posible cambiar el rol.')
     } finally {
@@ -219,7 +240,14 @@ export default function PeoplePage() {
   if (people === null || groups === null) return <PageContainer><Skeleton /></PageContainer>
 
   const groupOptions = groups.map((g) => ({ value: g.id, label: g.name }))
+  // Opciones con ícono exclusivas del selector de "Cambiar rol" (no se reutiliza groupOptions
+  // para no afectar el filtro de arriba ni el formulario de "Agregar servidor").
+  const roleEditOptions = groups.map((g) => {
+    const Icon = roleIcon(g.name)
+    return { value: g.id, label: <><Icon size={14} /> {g.name}</> }
+  })
   const grupoServidorId = groups.find((g) => g.name === 'Servidor')?.id ?? ''
+  const roleModalPerson = roleEditIsModal ? people.find((p) => p.id === editingId) ?? null : null
 
   function openModal() {
     setForm({ ...emptyForm, grupo_id: grupoServidorId ? String(grupoServidorId) : '' })
@@ -260,14 +288,19 @@ export default function PeoplePage() {
       <section className={styles.list}>
         <div className={styles.rowsHeader}>
           <span>Servidor</span>
-          <span>Rol</span>
+          <span>Grupo</span>
           <span>Estado</span>
           <span />
         </div>
 
         <div className={styles.rows}>
           {pageItems.map((person) => (
-            <article className={`${styles.row} ${!person.active ? styles.rowInactive : ''}`} key={person.id}>
+            <article
+              className={`${styles.row} ${!person.active ? styles.rowInactive : ''} ${
+                editingId === person.id && !roleEditIsModal ? styles.rowEditingRole : ''
+              }`}
+              key={person.id}
+            >
               <div className={styles.identityCell}>
                 <div className={styles.avatar}>
                   {person.name.split(' ').slice(0, 2).map((part) => part[0]).join('')}
@@ -296,46 +329,72 @@ export default function PeoplePage() {
               </div>
 
               <div className={styles.rolCell}>
-                <Badge dot={false} tone={roleTone(person.group.name)}>{person.group.name}</Badge>
+                {editingId === person.id && !roleEditIsModal ? (
+                  <div className={styles.roleSelectWrap}>
+                    <ModernSelect ariaLabel={`Rol de ${person.name}`} value={roleId} onChange={setRoleId} options={roleEditOptions} placeholder="Selecciona un grupo" />
+                  </div>
+                ) : (
+                  <Badge dot={false} tone={roleTone(person.group.name)}>{person.group.name}</Badge>
+                )}
               </div>
 
               <div className={styles.estadoCell}>
                 <Badge tone={person.active ? 'success' : 'danger'}>{person.active ? 'Activo' : 'Inactivo'}</Badge>
               </div>
 
-              {editingId === person.id ? (
-                <div className={styles.roleEditorCell}>
-                  <div className={styles.roleEditorSelect}>
-                    <ModernSelect ariaLabel={`Rol de ${person.name}`} value={roleId} onChange={setRoleId} options={groupOptions} placeholder="Selecciona un grupo" />
+              <div className={styles.actionsCell}>
+                {editingId === person.id && !roleEditIsModal ? (
+                  <div className={styles.roleEditActions}>
+                    <button aria-label={`Guardar rol de ${person.name}`} className={styles.roleSaveButton} disabled={updatingRole} onClick={() => saveRole(person.id)} type="button">
+                      <Check size={14} />
+                      {updatingRole ? 'Guardando…' : 'Guardar'}
+                    </button>
+                    <button aria-label={`Cancelar cambio de rol de ${person.name}`} className={styles.roleCancelButton} disabled={updatingRole} onClick={cancelRoleEdit} type="button">
+                      <X size={14} />
+                      Cancelar
+                    </button>
                   </div>
-                  <button aria-label="Guardar rol" className={styles.saveRole} disabled={updatingRole} onClick={() => saveRole(person.id)} type="button">
-                    <Check size={16} />
-                  </button>
-                  <button aria-label="Cancelar cambio de rol" className={styles.cancelRole} disabled={updatingRole} onClick={() => setEditingId(null)} type="button">
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : (
-                <div className={styles.actionsCell}>
-                  <RowActionsMenu
-                    ariaLabel={`Acciones para ${person.name}`}
-                    title={person.name}
-                    subtitle={person.email}
-                    items={[
-                      { key: 'rol', label: 'Cambiar rol', icon: Pencil, onClick: () => startRoleEdit(person) },
-                      { key: 'correo', label: 'Editar correo', icon: Mail, onClick: () => startEmailEdit(person) },
-                      {
-                        key: 'estado',
-                        label: person.active ? 'Desactivar' : 'Reactivar',
-                        icon: person.active ? UserX : UserCheck,
-                        tone: person.active ? 'danger' : undefined,
-                        disabled: statusUpdatingId === person.id,
-                        onClick: () => changeStatus(person, !person.active, null),
-                      },
-                    ]}
-                  />
-                </div>
-              )}
+                ) : (
+                  <>
+                    <div className={styles.inlineActions}>
+                      <button aria-label={`Cambiar rol de ${person.name}`} className={`${styles.inlineActionButton} ${styles.inlineActionInfo}`} onClick={() => startRoleEdit(person)} type="button">
+                        <Pencil size={16} />
+                      </button>
+                      <button aria-label={`Editar correo de ${person.name}`} className={`${styles.inlineActionButton} ${styles.inlineActionViolet}`} onClick={() => startEmailEdit(person)} type="button">
+                        <Mail size={16} />
+                      </button>
+                      <button
+                        aria-label={`${person.active ? 'Desactivar' : 'Reactivar'} a ${person.name}`}
+                        className={`${styles.inlineActionButton} ${person.active ? styles.inlineActionDanger : styles.inlineActionSuccess}`}
+                        disabled={statusUpdatingId === person.id}
+                        onClick={() => changeStatus(person, !person.active, null)}
+                        type="button"
+                      >
+                        {person.active ? <UserX size={16} /> : <UserCheck size={16} />}
+                      </button>
+                    </div>
+                    <div className={styles.menuActions}>
+                      <RowActionsMenu
+                        ariaLabel={`Acciones para ${person.name}`}
+                        title={person.name}
+                        subtitle={person.email}
+                        items={[
+                          { key: 'rol', label: 'Cambiar rol', icon: Pencil, onClick: () => startRoleEdit(person) },
+                          { key: 'correo', label: 'Editar correo', icon: Mail, onClick: () => startEmailEdit(person) },
+                          {
+                            key: 'estado',
+                            label: person.active ? 'Desactivar' : 'Reactivar',
+                            icon: person.active ? UserX : UserCheck,
+                            tone: person.active ? 'danger' : undefined,
+                            disabled: statusUpdatingId === person.id,
+                            onClick: () => changeStatus(person, !person.active, null),
+                          },
+                        ]}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
 
               {commentPromptId === person.id && (
                 <div className={styles.commentPrompt}>
@@ -409,6 +468,33 @@ export default function PeoplePage() {
               <Button type="submit" disabled={saving || !canSave}>{saving ? 'Guardando…' : 'Guardar servidor'}</Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {roleModalPerson && (
+        <Modal title="Cambiar rol" onClose={cancelRoleEdit}>
+          <div className={styles.roleModalBody}>
+            <div className={styles.roleModalIdentity}>
+              <strong>{roleModalPerson.name}</strong>
+              <span>{roleModalPerson.email}</span>
+            </div>
+            <label className={styles.field}>Rol
+              <ModernSelect
+                ariaLabel={`Rol de ${roleModalPerson.name}`}
+                value={roleId}
+                onChange={setRoleId}
+                options={roleEditOptions}
+                placeholder="Selecciona un grupo"
+              />
+            </label>
+            {error && <div className={styles.errors} role="alert"><p>{error}</p></div>}
+            <div className={styles.formActions}>
+              <button type="button" onClick={cancelRoleEdit} disabled={updatingRole}>Cancelar</button>
+              <Button type="button" disabled={updatingRole} onClick={() => saveRole(roleModalPerson.id)}>
+                {updatingRole ? 'Guardando…' : 'Guardar cambios'}
+              </Button>
+            </div>
+          </div>
         </Modal>
       )}
     </PageContainer>
