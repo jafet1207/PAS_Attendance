@@ -10,7 +10,7 @@ import {
 } from '../src/controllers/confirmController.js';
 import { generarIcs } from '../src/services/recordatoriosService.js';
 import { RespuestaModel } from '../src/models/respuesta.model.js';
-import { Mailer, establecerMailerDePruebas } from '../src/mailer/index.js';
+import { Mailer, GmailMailer, establecerMailerDePruebas } from '../src/mailer/index.js';
 
 function addDays(days: number): string {
   const d = new Date();
@@ -147,7 +147,7 @@ describe('Etapa 4: Flujo de éxito contra base de datos real', () => {
     const res = await request(app).get(`/confirm/${token}`);
     expect(res.status).toBe(200);
     expect(res.text).toContain('Confirmación de Asistencia');
-    expect(res.text).toContain('07:30'); // Servidor: 1.5h antes de las 09:00
+    expect(res.text).toContain('7:30 AM'); // Servidor: 1.5h antes de las 09:00 (formato 12h)
     expect(res.text).toContain(`action="/confirm/${token}"`);
   });
 
@@ -171,7 +171,7 @@ describe('Etapa 4: Flujo de éxito contra base de datos real', () => {
     const res = await request(app).post(`/confirm/${token}`).send({ respuesta: 'Sí' });
     expect(res.status).toBe(200);
     expect(res.text).toContain('¡Asistencia Confirmada!');
-    expect(res.text).toContain('07:30');
+    expect(res.text).toContain('7:30 AM');
   });
 
   it('GET /confirm/:token vuelve a mostrar el formulario con la respuesta actual', async () => {
@@ -335,4 +335,92 @@ describe('Etapa 4: RN-10 - Acuse de recibo por correo (mailer)', () => {
 
     expect(espia.llamadas).toEqual([]);
   });
+});
+
+// Solo corre cuando hay credenciales reales de Gmail configuradas (GMAIL_USER/GMAIL_APP_PASSWORD);
+// en CI o sin ellas se omite automáticamente, nunca falla por su ausencia. Usa la misma cuenta
+// real (config.gmailUser) como remitente y destinatario a la vez, para no depender de una
+// segunda bandeja real.
+describe('Etapa 4: ambas respuestas (Sí/No), por botón rápido del correo y por formulario, con acuse real', () => {
+  let app: ReturnType<typeof createApp>;
+  let agent: ReturnType<typeof request.agent>;
+  const gmailConfigurado = Boolean(config.gmailUser && config.gmailAppPassword);
+
+  beforeAll(async () => {
+    app = createApp();
+    agent = request.agent(app);
+    await agent.post('/api/login').send({ password: config.coordinadorPassword });
+  });
+
+  afterEach(() => {
+    establecerMailerDePruebas(null);
+  });
+
+  (gmailConfigurado ? it : it.skip)(
+    'Botones rápidos (correo) y formulario funcionan para Sí y No, y el acuse de recibo llega de verdad (RN-10, tope de 2)',
+    async () => {
+      // El correo es único (RN de esquema): si config.gmailUser ya está dado de alta (p. ej. de
+      // una prueba manual anterior), se reutiliza ese participante en vez de fallar al crearlo.
+      const intentoCrear = await agent.post('/api/participants').send({
+        nombre: 'Prueba',
+        primer_apellido: 'EtapaCuatroGmailReal',
+        correo: config.gmailUser,
+        grupo_id: 1,
+      });
+      let participanteId: number;
+      if (intentoCrear.status === 201) {
+        participanteId = intentoCrear.body.data.id as number;
+      } else {
+        const lista = await agent.get('/api/participants');
+        const existente = lista.body.data.find(
+          (p: { email: string }) => p.email === config.gmailUser
+        );
+        if (!existente) throw new Error('No se pudo crear ni encontrar al participante de Gmail real.');
+        participanteId = existente.id as number;
+      }
+
+      const servicio = await agent.post('/api/services').send({
+        fecha_servicio: addDays(400),
+        hora_servicio: '09:00',
+        fecha_cierre_confirmacion: addDays(399),
+        tipo: 'Regular',
+      });
+      const token = generarToken(participanteId, servicio.body.data.id as number);
+
+      establecerMailerDePruebas(new GmailMailer());
+
+      // 1. Botón "Sí" del correo (quickAction) -> alta, dispara acuse real.
+      const resSiCorreo = await request(app).get(`/confirm/${token}/si`);
+      expect(resSiCorreo.status).toBe(200);
+      expect(resSiCorreo.text).toContain('¡Asistencia Confirmada!');
+
+      // 2. Botón "No" del correo (quickAction) -> cambio, dispara el segundo (y último, RN-10)
+      // acuse real.
+      const resNoCorreo = await request(app).get(`/confirm/${token}/no`);
+      expect(resNoCorreo.status).toBe(200);
+      expect(resNoCorreo.text).toContain('Respuesta Registrada');
+
+      // Deja tiempo a que los dos envíos "fire and forget" anteriores terminen antes de seguir.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // 3. Botón "Sí" del formulario -> cambio otra vez, pero ya se alcanzó el tope de 2
+      // acuses (RN-10): se registra igual, sin disparar un tercer correo.
+      const resSiForm = await request(app).post(`/confirm/${token}`).send({ respuesta: 'Sí' });
+      expect(resSiForm.status).toBe(200);
+      expect(resSiForm.text).toContain('¡Asistencia Confirmada!');
+
+      // 4. Botón "No" del formulario -> idem, cuarto cambio, tampoco dispara correo.
+      const resNoForm = await request(app).post(`/confirm/${token}`).send({ respuesta: 'No' });
+      expect(resNoForm.status).toBe(200);
+      expect(resNoForm.text).toContain('Respuesta Registrada');
+
+      const respuestaFinal = await RespuestaModel.getByParticipanteServicio(
+        participanteId,
+        servicio.body.data.id as number
+      );
+      expect(respuestaFinal?.respuesta).toBe('No');
+      expect(respuestaFinal?.notificaciones_enviadas).toBe(2); // RN-10: tope de 2, no 4
+    },
+    30000
+  );
 });

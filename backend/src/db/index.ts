@@ -83,6 +83,16 @@ export async function initDb(): Promise<void> {
       );
     `);
 
+    // Idempotente: congela, la primera vez que se detecta un servicio ya cerrado, cuántos
+    // participantes estaban convocados/confirmados en ese momento (RN: una desactivación
+    // posterior ya no debe mover los números de un servicio que dejó de aceptar respuestas).
+    await client.query(`
+      ALTER TABLE Servicio ADD COLUMN IF NOT EXISTS convocados_congelados INTEGER;
+    `);
+    await client.query(`
+      ALTER TABLE Servicio ADD COLUMN IF NOT EXISTS confirmados_congelados INTEGER;
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS Respuesta (
         id SERIAL PRIMARY KEY,

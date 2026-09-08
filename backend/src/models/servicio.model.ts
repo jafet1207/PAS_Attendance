@@ -7,6 +7,8 @@ export interface Servicio {
   fecha_cierre_confirmacion: string | Date;
   tipo: 'Regular' | 'Extraordinario';
   fecha_creacion?: Date;
+  convocados_congelados: number | null;
+  confirmados_congelados: number | null;
 }
 
 export class ServicioModel {
@@ -37,5 +39,19 @@ export class ServicioModel {
       [fechaServicio, horaServicio, fechaCierre, tipo]
     );
     return res.rows[0].id;
+  }
+
+  /** Congela, para un servicio que ya cerró, cuántos participantes estaban convocados/confirmados
+   * en ese momento. A partir de ahí, desactivar o reactivar servidores ya no debe mover estos
+   * números (solo aplican a servicios cuya ventana de confirmación todavía está abierta). */
+  static async congelarConteo(
+    id: number,
+    convocados: number,
+    confirmados: number
+  ): Promise<void> {
+    await query(
+      'UPDATE Servicio SET convocados_congelados = $1, confirmados_congelados = $2 WHERE id = $3',
+      [convocados, confirmados, id]
+    );
   }
 }

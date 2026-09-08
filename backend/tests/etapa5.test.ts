@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
 import { generarIcs, ejecutarCicloDeRecordatorios } from '../src/services/recordatoriosService.js';
-import { ScriptedMailer, MockMailer, Mailer } from '../src/mailer/index.js';
+import { ScriptedMailer, MockMailer, GmailMailer, Mailer } from '../src/mailer/index.js';
 import { RespuestaModel } from '../src/models/respuesta.model.js';
 
 function addDays(days: number): string {
@@ -68,6 +68,12 @@ describe('Etapa 5: Reglas de dominio en memoria', () => {
     const mailer = new MockMailer();
     expect(await mailer.enviar({ to: 'a@test.com', subject: 's', html: '<p></p>' })).toBe(true);
   });
+
+  it('GmailMailer simula el envío (sin tocar SMTP real) cuando el destinatario no es @gmail.com', async () => {
+    const mailer = new GmailMailer();
+    expect(await mailer.enviar({ to: 'servidor@outlook.com', subject: 's', html: '<p></p>' })).toBe(true);
+    expect(await mailer.enviar({ to: 'otro@hotmail.com', subject: 's', html: '<p></p>' })).toBe(true);
+  });
 });
 
 // Estas pruebas insertan participantes y servicios reales contra TEST_DATABASE_URL (mismo
@@ -87,11 +93,40 @@ describe('Etapa 5: Flujo de éxito contra base de datos real', () => {
     return res.body.data.id as number;
   }
 
+  // A diferencia de crearParticipante, el correo puede ya existir (p. ej. config.gmailUser, si
+  // el coordinador ya lo dio de alta a mano para probar el envío real) — el correo es único
+  // (RN de esquema), así que en ese caso se reutiliza el participante existente en vez de fallar.
+  async function crearParticipanteConCorreo(grupoId: number, correo: string) {
+    const res = await agent
+      .post('/api/participants')
+      .send({ nombre: 'Prueba', primer_apellido: 'EtapaCincoGmail', correo, grupo_id: grupoId });
+    if (res.status === 201 || res.status === 200) {
+      return res.body.data.id as number;
+    }
+    const lista = await agent.get('/api/participants');
+    const existente = lista.body.data.find((p: { email: string }) => p.email === correo);
+    if (!existente) throw new Error(`No se pudo crear ni encontrar al participante con correo ${correo}`);
+    return existente.id as number;
+  }
+
   async function crearServicioAbierto() {
+    // Cierre a 1 día (dentro de la ventana de envío de recordatorios, RN-7: 2/1/0 días antes).
     const res = await agent.post('/api/services').send({
-      fecha_servicio: addDays(400),
+      fecha_servicio: addDays(2),
       hora_servicio: '09:00',
-      fecha_cierre_confirmacion: addDays(399),
+      fecha_cierre_confirmacion: addDays(1),
+      tipo: 'Regular',
+    });
+    return res.body.data.id as number;
+  }
+
+  async function crearServicioFueraDeVentanaDeEnvio() {
+    // Ventana de confirmación abierta (RN-2), pero el cierre está a 5 días — fuera de la
+    // ventana de envío de recordatorios (RN-7: solo 2, 1 o 0 días antes).
+    const res = await agent.post('/api/services').send({
+      fecha_servicio: addDays(6),
+      hora_servicio: '09:00',
+      fecha_cierre_confirmacion: addDays(5),
       tipo: 'Regular',
     });
     return res.body.data.id as number;
@@ -172,6 +207,73 @@ describe('Etapa 5: Flujo de éxito contra base de datos real', () => {
     expect(resumen.participantes_evaluados).toBe(0);
     expect(resumen.recordatorios_exitosos).toBe(0);
   });
+
+  it('RN-7: un servicio con la ventana de confirmación abierta pero fuera de la ventana de envío (faltan más de 2 días) no se procesa', async () => {
+    const servidorId = await crearParticipante(1, 'lejano');
+    const servicioId = await crearServicioFueraDeVentanaDeEnvio();
+
+    const resumen = await ejecutarCicloDeRecordatorios({
+      mailer: new ScriptedMailer([true]),
+      servicioIds: [servicioId],
+      participanteIds: [servidorId],
+    });
+
+    expect(resumen.servicios_procesados).toBe(0);
+    expect(resumen.participantes_evaluados).toBe(0);
+    expect(resumen.recordatorios_exitosos).toBe(0);
+  });
+
+  // Solo corre cuando hay credenciales reales de Gmail configuradas en el entorno (igual que la
+  // guardia de seguridad de las pruebas HTTP más abajo); en CI o sin GMAIL_USER/GMAIL_APP_PASSWORD
+  // se omite automáticamente, nunca falla por su ausencia.
+  const gmailConfigurado = Boolean(config.gmailUser && config.gmailAppPassword);
+
+  /**
+   * Envuelve un GmailMailer real pero solo deja pasar a SMTP real el primer destinatario
+   * @gmail.com que vea; cualquier otro @gmail.com posterior se simula (sin tocar la red), para
+   * no arriesgar varios envíos reales de golpe si esta prueba corre con múltiples destinatarios
+   * @gmail.com sintéticos.
+   */
+  class GmailUnaVezMailer implements Mailer {
+    enviosReales: string[] = [];
+    private yaEnvioUnGmailReal = false;
+    constructor(private readonly real: Mailer) {}
+
+    async enviar(correo: { to: string; subject: string; html: string }): Promise<boolean> {
+      const esGmail = correo.to.toLowerCase().endsWith('@gmail.com');
+      if (esGmail && this.yaEnvioUnGmailReal) {
+        return true; // ya se usó el único envío real permitido en esta prueba
+      }
+      if (esGmail) this.yaEnvioUnGmailReal = true;
+      const resultado = await this.real.enviar(correo);
+      if (esGmail) this.enviosReales.push(correo.to);
+      return resultado;
+    }
+  }
+
+  (gmailConfigurado ? it : it.skip)(
+    'GmailMailer real: con varios destinatarios @gmail.com en la misma corrida, solo el primero recibe un envío real',
+    async () => {
+      const idReal = await crearParticipanteConCorreo(1, config.gmailUser);
+      const idGmailExtra = await crearParticipanteConCorreo(
+        1,
+        `otro.prueba.etapa5.${Date.now()}@gmail.com`
+      );
+      const idNoGmail = await crearParticipante(1, 'no-gmail-junto-a-real');
+      const servicioId = await crearServicioAbierto();
+
+      const espia = new GmailUnaVezMailer(new GmailMailer());
+      const resumen = await ejecutarCicloDeRecordatorios({
+        mailer: espia,
+        servicioIds: [servicioId],
+        participanteIds: [idReal, idGmailExtra, idNoGmail],
+      });
+
+      expect(resumen.recordatorios_exitosos).toBe(3); // los 3 reportan éxito (1 real + 2 simulados)
+      expect(espia.enviosReales).toEqual([config.gmailUser]); // solo el primer @gmail.com tocó SMTP real
+    },
+    20000
+  );
 
   it('Lock del ciclo: una invocación concurrente se omite en vez de duplicar el envío', async () => {
     const servidorId = await crearParticipante(1, 'lock');

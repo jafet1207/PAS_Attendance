@@ -99,6 +99,8 @@ export interface ServiceJson {
 // Un servidor desactivado deja de contar como convocado (RN interna de la Etapa 3): no suma
 // en "invited" ni en "confirmed" de ningún servicio, para que "pendientes" siga siendo
 // consistente (invited - confirmed) sobre el mismo universo de participantes activos.
+// Esto es en vivo solo mientras la ventana de confirmación está abierta; una vez cerrada,
+// `obtenerServiciosEnriquecidos` congela estos conteos (ver Servicio.convocados_congelados).
 async function contarTodosLosParticipantes(): Promise<number> {
   const res = await query<{ count: string }>(
     'SELECT COUNT(*) as count FROM Participante WHERE activo = true'
@@ -150,13 +152,26 @@ export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecid
   const serviciosConInfo: ServicioEnriquecido[] = [];
 
   for (const servicio of servicios) {
-    const confirmados = confirmadosPorServicio.get(servicio.id) ?? 0;
-    const pendientes = totalParticipantes - confirmados;
-
     const fechaCierreStr = formatDateYMD(servicio.fecha_cierre_confirmacion);
     const fechaCierreDate = parseDate(fechaCierreStr);
-
     const ventanaAbierta = hoyDate < fechaCierreDate;
+
+    // Mientras la ventana está abierta, "convocados"/"confirmados" son en vivo: reflejan
+    // altas, bajas y respuestas al instante. Una vez cerrada, se congelan (RN: desactivar o
+    // reactivar un servidor después del cierre ya no debe mover los números de ese servicio).
+    let totalParticipantesServicio = totalParticipantes;
+    let confirmadosServicio = confirmadosPorServicio.get(servicio.id) ?? 0;
+
+    if (!ventanaAbierta) {
+      if (servicio.convocados_congelados != null && servicio.confirmados_congelados != null) {
+        totalParticipantesServicio = servicio.convocados_congelados;
+        confirmadosServicio = servicio.confirmados_congelados;
+      } else {
+        await ServicioModel.congelarConteo(servicio.id, totalParticipantesServicio, confirmadosServicio);
+      }
+    }
+
+    const pendientes = totalParticipantesServicio - confirmadosServicio;
     const diffTime = fechaCierreDate.getTime() - hoyDate.getTime();
     const diasParaCierre = Math.round(diffTime / (1000 * 60 * 60 * 24));
     const estado = calcularEstado(ventanaAbierta, pendientes);
@@ -165,8 +180,8 @@ export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecid
       ...servicio,
       nombre: formatearNombreServicio(servicio.fecha_servicio, servicio.tipo),
       pendientes,
-      total_participantes: totalParticipantes,
-      confirmados,
+      total_participantes: totalParticipantesServicio,
+      confirmados: confirmadosServicio,
       ventana_abierta: ventanaAbierta,
       dias_para_cierre: diasParaCierre,
       estado,

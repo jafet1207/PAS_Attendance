@@ -37,7 +37,12 @@ export class ScriptedMailer implements Mailer {
   }
 }
 
-/** Mailer real vía Gmail SMTP (usa GMAIL_USER / GMAIL_APP_PASSWORD). */
+/**
+ * Mailer real vía Gmail SMTP (usa GMAIL_USER / GMAIL_APP_PASSWORD).
+ * Solo envía de verdad cuando el destinatario es @gmail.com; para cualquier otro dominio,
+ * simula el envío (mismo comportamiento que MockMailer) en vez de arriesgar problemas de
+ * entrega con destinatarios fuera de Gmail.
+ */
 export class GmailMailer implements Mailer {
   private transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -45,6 +50,11 @@ export class GmailMailer implements Mailer {
   });
 
   async enviar(correo: EnvioCorreo): Promise<boolean> {
+    if (!correo.to.toLowerCase().endsWith('@gmail.com')) {
+      console.log(`[GmailMailer] Destinatario no es @gmail.com, simulando envío a ${correo.to}: "${correo.subject}"`);
+      return true;
+    }
+
     try {
       await this.transporter.sendMail({
         from: config.gmailUser,

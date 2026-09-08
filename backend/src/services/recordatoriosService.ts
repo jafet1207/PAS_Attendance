@@ -1,7 +1,14 @@
 import { query } from '../db/index.js';
 import { config, BUSINESS_CONSTANTS } from '../config/env.js';
 import { generarToken } from '../tokens/index.js';
-import { escapeHtml, calcularHoraLlegada, obtenerBufferLlegadaHoras } from '../controllers/confirmController.js';
+import {
+  escapeHtml,
+  calcularHoraLlegada,
+  obtenerBufferLlegadaHoras,
+  formatearHora12,
+  renderEmailHtml,
+  EMAIL_ESTILOS,
+} from '../controllers/confirmController.js';
 import {
   obtenerServiciosEnriquecidos,
   formatDateYMD,
@@ -196,35 +203,40 @@ interface DatosRecordatorioHtml {
   token: string;
 }
 
+/**
+ * Misma plantilla y clases CSS que las páginas públicas de confirmación
+ * (`confirmController.renderBaseHtml`) — para que el correo de recordatorio y el correo de
+ * acuse de recibo (y la página web) se vean consistentes entre sí.
+ */
 function renderRecordatorioHtml(datos: DatosRecordatorioHtml): string {
   const base = config.appBaseUrl;
   const linkFormulario = `${base}/confirm/${datos.token}`;
   const linkSi = `${base}/confirm/${datos.token}/si`;
   const linkNo = `${base}/confirm/${datos.token}/no`;
 
-  return `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background:#F9F7F3; padding:20px; margin:0; color:#1C1C18;">
-  <div style="max-width:480px;margin:0 auto;background:#FFFFFF;border:1px solid #E5DFD5;border-radius:16px;padding:32px 24px;text-align:center;">
-    <h1 style="font-size:22px;color:#2E5A44;margin:0 0 12px;">Recordatorio de Asistencia</h1>
-    <p style="font-size:15px;color:#5C5852;line-height:1.5;margin:0 0 16px;">
-      Hola <strong>${escapeHtml(datos.participanteNombre)}</strong>, todavía no hemos recibido tu confirmación para el siguiente servicio:
-    </p>
-    <div style="background:#F6F3ED;border-radius:12px;padding:18px;margin:20px 0;text-align:left;font-size:14px;">
-      <p style="margin:6px 0;"><strong>Servicio:</strong> ${escapeHtml(datos.servicioNombre)}</p>
-      <p style="margin:6px 0;"><strong>Fecha:</strong> ${datos.fechaServicio}</p>
-      <p style="margin:6px 0;"><strong>Hora de llegada:</strong> <span style="color:#2E5A44;font-weight:700;">${datos.horaLlegada}</span></p>
-      <p style="margin:6px 0;"><strong>Fecha límite para responder:</strong> ${datos.fechaCierre}</p>
+  const contenido = `
+    <h1 style="${EMAIL_ESTILOS.h1}">Recordatorio de Asistencia</h1>
+    <p style="${EMAIL_ESTILOS.p}">Hola <strong>${escapeHtml(datos.participanteNombre)}</strong>, todavía no hemos recibido tu confirmación para el siguiente servicio:</p>
+
+    <div style="${EMAIL_ESTILOS.callout}">
+      <span style="${EMAIL_ESTILOS.calloutLabel}">Hora de llegada requerida</span>
+      <span style="${EMAIL_ESTILOS.calloutTime}">${formatearHora12(datos.horaLlegada)}</span>
     </div>
-    <a href="${linkSi}" style="display:block;box-sizing:border-box;width:100%;padding:14px;border-radius:12px;font-size:16px;font-weight:600;text-decoration:none;margin-bottom:12px;background:#2E5A44;color:#FFFFFF;">✓ Sí, voy a asistir</a>
-    <a href="${linkNo}" style="display:block;box-sizing:border-box;width:100%;padding:14px;border-radius:12px;font-size:16px;font-weight:600;text-decoration:none;margin-bottom:12px;background:#FBF0EB;color:#B25E46;border:1px solid #E5C3B6;">✗ No podré asistir</a>
-    <p style="font-size:12px;color:#8C867E;margin-top:16px;">
-      ¿Prefieres revisar los detalles antes? <a href="${linkFormulario}" style="color:#2E5A44;">Abre el formulario de confirmación</a>.
+
+    <div style="${EMAIL_ESTILOS.details}">
+      <p style="${EMAIL_ESTILOS.detailRow}"><strong>Servicio:</strong> ${escapeHtml(datos.servicioNombre)}</p>
+      <p style="${EMAIL_ESTILOS.detailRow}"><strong>Fecha:</strong> ${datos.fechaServicio}</p>
+      <p style="${EMAIL_ESTILOS.detailRow}"><strong>Fecha límite para responder:</strong> ${datos.fechaCierre}</p>
+    </div>
+
+    <a href="${linkSi}" style="${EMAIL_ESTILOS.btnPrimary}">✓ Sí, voy a asistir</a>
+    <a href="${linkNo}" style="${EMAIL_ESTILOS.btnDanger}">✗ No podré asistir</a>
+
+    <p style="${EMAIL_ESTILOS.footer}">
+      ¿Prefieres revisar los detalles antes? <a href="${linkFormulario}" style="${EMAIL_ESTILOS.link}">Abre el formulario de confirmación</a>.
     </p>
-  </div>
-</body>
-</html>`;
+  `;
+  return renderEmailHtml('Recordatorio de Asistencia', contenido);
 }
 
 export interface OpcionesCicloRecordatorios {
@@ -235,9 +247,21 @@ export interface OpcionesCicloRecordatorios {
 }
 
 /**
- * RF-5: evalúa todos los servicios con ventana de confirmación abierta (RN-2/RN-7, ya
- * calculado en `ventana_abierta`) y despacha un recordatorio a cada participante elegible
- * (RN-5) que aún no respondió y no alcanzó el tope de 3 envíos exitosos (RN-6).
+ * RN-7: días hasta el cierre de confirmación de un servicio (puede ser negativo si ya cerró).
+ * Calculado sobre fechas locales (medianoche a medianoche), no sobre instantes UTC, para que
+ * un mismo día calendario siempre dé la misma diferencia entera de días.
+ */
+function diasHastaCierre(fechaCierreStr: string): number {
+  const hoy = new Date(`${formatDateYMD(new Date())}T00:00:00`);
+  const cierre = new Date(`${fechaCierreStr}T00:00:00`);
+  return Math.round((cierre.getTime() - hoy.getTime()) / (24 * 3600 * 1000));
+}
+
+/**
+ * RF-5: evalúa los servicios con ventana de confirmación abierta (RN-2) cuyo cierre cae
+ * exactamente dentro de la ventana de envío (RN-7: 2 días antes, 1 día antes, o el mismo día
+ * del cierre) y despacha un recordatorio a cada participante elegible (RN-5) que aún no
+ * respondió y no alcanzó el tope de 3 envíos exitosos (RN-6).
  *
  * Serializa la ejecución con el lock de `Recordatorios_Lock`: si otra invocación ya está en
  * curso (doble disparo de cron, cron y panel a la vez, reintento de red), esta llamada no
@@ -284,7 +308,12 @@ async function ejecutarCicloInterno(
   };
 
   const servicios = (await obtenerServiciosEnriquecidos()).filter(
-    (s) => s.ventana_abierta && (!opciones.servicioIds || opciones.servicioIds.includes(s.id))
+    (s) =>
+      s.ventana_abierta &&
+      BUSINESS_CONSTANTS.DIAS_DE_ENVIO_RECORDATORIO.includes(
+        diasHastaCierre(formatDateYMD(s.fecha_cierre_confirmacion))
+      ) &&
+      (!opciones.servicioIds || opciones.servicioIds.includes(s.id))
   );
   const elegibles = await obtenerParticipantesElegibles(opciones.participanteIds);
 

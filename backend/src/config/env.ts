@@ -24,6 +24,9 @@ export const config = {
 // Constantes de negocio
 export const BUSINESS_CONSTANTS = {
   MAX_RECORDATORIOS_EXITOSOS: 3,
+  // RN-7 (revisada): un recordatorio solo se envía cuando faltan exactamente 2 días, 1 día, o
+  // es el mismo día del cierre de confirmación (el día de cierre sigue abierto hasta medianoche).
+  DIAS_DE_ENVIO_RECORDATORIO: [2, 1, 0] as readonly number[],
   ZONA_HORARIA_OFFSET_HORAS: -6, // Costa Rica UTC-6
   BUFFER_LLEGADA_HORAS: {
     Servidor: 1.5,

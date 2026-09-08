@@ -57,7 +57,7 @@ describe('Etapa 3: Servidores y roles', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors).toContain('El nombre es requerido.');
+      expect(res.body.errors).toContain('El nombre debe tener al menos 2 caracteres y no puede ser solo números.');
     });
 
     it('Rechaza si falta el primer apellido', async () => {
@@ -71,7 +71,7 @@ describe('Etapa 3: Servidores y roles', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(res.body.errors).toContain('El primer apellido es requerido.');
+      expect(res.body.errors).toContain('El primer apellido debe tener al menos 2 caracteres y no puede ser solo números.');
     });
 
     it('Rechaza si el correo no es válido', async () => {
@@ -87,6 +87,36 @@ describe('Etapa 3: Servidores y roles', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.errors).toContain('Ingresa un correo válido.');
+    });
+
+    it('Rechaza un nombre de un solo caracter', async () => {
+      const agent = request.agent(app);
+      await agent.post('/api/login').send({ password: config.coordinadorPassword });
+
+      const res = await agent.post('/api/participants').send({
+        nombre: 'A',
+        primer_apellido: 'Solano',
+        correo: 'ana@ejemplo-sintetico.test',
+        grupo_id: 1,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toContain('El nombre debe tener al menos 2 caracteres y no puede ser solo números.');
+    });
+
+    it('Rechaza un nombre compuesto solo por números', async () => {
+      const agent = request.agent(app);
+      await agent.post('/api/login').send({ password: config.coordinadorPassword });
+
+      const res = await agent.post('/api/participants').send({
+        nombre: '123',
+        primer_apellido: 'Solano',
+        correo: 'ana@ejemplo-sintetico.test',
+        grupo_id: 1,
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toContain('El nombre debe tener al menos 2 caracteres y no puede ser solo números.');
     });
 
     it('Rechaza si el grupo no es válido', async () => {

@@ -21,6 +21,41 @@ export function escapeHtml(valor: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// Plantilla de CORREO (no de página web): estilos 100% inline, sin <style>/clases CSS. Varios
+// clientes de correo (comprobado en Gmail) ignoran o eliminan bloques <style>, lo que dejaba
+// los botones y el resto del diseño sin ningún estilo (texto azul plano de enlace, sin fondo
+// ni bordes). Las páginas web públicas (`renderBaseHtml`, más abajo) sí pueden usar clases
+// porque las renderiza un navegador, no un cliente de correo.
+export const EMAIL_ESTILOS = {
+  body: "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background:#F9F7F3; padding:12px; margin:0; color:#1C1C18;",
+  card: 'max-width:480px;margin:0 auto;background:#FFFFFF;border:1px solid #E5DFD5;border-radius:16px;padding:22px 20px;text-align:center;',
+  h1: 'font-size:20px;color:#2E5A44;margin:0 0 8px;',
+  p: 'font-size:14px;color:#5C5852;line-height:1.4;margin:0 0 10px;',
+  details: 'background:#F6F3ED;border-radius:12px;padding:12px 14px;margin:12px 0;text-align:left;font-size:13px;',
+  detailRow: 'margin:4px 0;',
+  detailRowSecondary: 'margin:4px 0;color:#8C867E;font-weight:400;',
+  callout: 'background:#EBF3EE;border-radius:12px;padding:10px 16px;margin:10px 0;text-align:center;',
+  calloutLabel: 'display:block;font-size:11px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:#2E5A44;margin-bottom:2px;',
+  calloutTime: 'font-size:21px;font-weight:800;color:#2E5A44;',
+  btnPrimary: 'display:block;box-sizing:border-box;width:100%;padding:11px;border-radius:12px;font-size:15px;font-weight:600;text-decoration:none;margin-bottom:8px;background:#2E5A44;color:#FFFFFF;',
+  btnDanger: 'display:block;box-sizing:border-box;width:100%;padding:11px;border-radius:12px;font-size:15px;font-weight:600;text-decoration:none;margin-bottom:8px;background:#FBF0EB;color:#B25E46;border:1px solid #E5C3B6;',
+  footer: 'font-size:12px;color:#8C867E;margin-top:8px;',
+  link: 'color:#2E5A44;',
+};
+
+/** Envoltorio común de los correos (tarjeta centrada), con los mismos estilos inline. */
+export function renderEmailHtml(titulo: string, contenidoInterior: string): string {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>${titulo}</title></head>
+<body style="${EMAIL_ESTILOS.body}">
+  <div style="${EMAIL_ESTILOS.card}">
+    ${contenidoInterior}
+  </div>
+</body>
+</html>`;
+}
+
 // RN-2: la ventana de confirmación permanece abierta hasta el día de cierre inclusive
 // (hoy <= fecha_cierre_confirmacion). Es una regla distinta a RN-3 (estado del dashboard,
 // que usa "<" estricto) porque responde a una pregunta diferente: "¿puedo confirmar hoy?"
@@ -57,7 +92,20 @@ export function calcularHoraLlegada(horaServicioStr: string, grupoNombre: string
   return `${pad(llegadaH)}:${pad(llegadaM)}`;
 }
 
-function renderBaseHtml(titulo: string, contenido: string): string {
+/** "09:00" -> "9:00 AM" (formato de 12 horas, consistente con el resto de la interfaz). */
+export function formatearHora12(horaHHMM: string): string {
+  const [h, m] = horaHHMM.split(':').map((x) => parseInt(x, 10));
+  const periodo = h >= 12 ? 'PM' : 'AM';
+  const hora12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hora12}:${String(m).padStart(2, '0')} ${periodo}`;
+}
+
+/**
+ * Exportado para que el correo de recordatorio (`recordatoriosService.ts`) use exactamente la
+ * misma plantilla y estilos que las páginas públicas de confirmación — mismo look en ambos
+ * correos que recibe un participante.
+ */
+export function renderBaseHtml(titulo: string, contenido: string): string {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -130,7 +178,25 @@ function renderBaseHtml(titulo: string, contenido: string): string {
     .details-row:last-child { border-bottom: none; }
     .details-label { color: var(--text-muted); }
     .details-value { font-weight: 600; color: var(--text); }
+    .details-value-secondary { font-weight: 400; color: var(--text-muted); font-size: 13px; }
     .highlight { color: var(--primary); font-weight: 700; }
+    .arrival-callout {
+      background: var(--primary-light);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin: 16px 0;
+      text-align: center;
+    }
+    .arrival-callout .arrival-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+    .arrival-callout .arrival-time { font-size: 24px; font-weight: 800; color: var(--primary); }
     .btn {
       display: block;
       width: 100%;
@@ -228,6 +294,15 @@ export function renderConfirmacionExitosaHtml(
     <h1>${esSi ? '¡Asistencia Confirmada!' : 'Respuesta Registrada'}</h1>
     <p>Hola <strong>${participanteNombre}</strong>, hemos guardado tu respuesta: <strong style="color: ${esSi ? 'var(--primary)' : 'var(--danger)'};">${respuesta}</strong>.</p>
 
+    ${
+      esSi
+        ? `<div class="arrival-callout">
+            <span class="arrival-label">Hora de llegada requerida</span>
+            <span class="arrival-time">${formatearHora12(horaLlegada)}</span>
+          </div>`
+        : ''
+    }
+
     <div class="details">
       <div class="details-row">
         <span class="details-label">Servicio:</span>
@@ -242,28 +317,68 @@ export function renderConfirmacionExitosaHtml(
         <span class="details-value">${fechaServicio}</span>
       </div>
       <div class="details-row">
-        <span class="details-label">Hora del servicio:</span>
-        <span class="details-value">${horaServicio}</span>
+        <span class="details-label">Hora de inicio del servicio:</span>
+        <span class="details-value-secondary">${formatearHora12(horaServicio)}</span>
       </div>
-      ${
-        esSi
-          ? `<div class="details-row">
-              <span class="details-label">Hora de llegada:</span>
-              <span class="details-value highlight">${horaLlegada}</span>
-            </div>`
-          : ''
-      }
     </div>
 
     <p class="footer-note">
       ${
         esSi
-          ? `Te esperamos puntualmente a las ${horaLlegada}. Puedes modificar tu respuesta antes del ${fechaCierre} si surge algún imprevisto.`
+          ? `Puedes modificar tu respuesta antes del ${fechaCierre} si surge algún imprevisto.`
           : `Gracias por informarnos con tiempo. Puedes cambiar tu respuesta antes del ${fechaCierre} si tu disponibilidad cambia.`
       }
     </p>
   `;
   return renderBaseHtml('Confirmación Guardada', contenido);
+}
+
+/**
+ * Versión de CORREO (estilos inline) del acuse de recibo — mismo diseño que el correo de
+ * recordatorio (`recordatoriosService.renderRecordatorioHtml`), consistente entre ambos.
+ * `renderConfirmacionExitosaHtml` (arriba) sigue usándose para la página web que ve el
+ * participante justo después de responder.
+ */
+export function renderAcuseDeReciboEmailHtml(
+  participanteNombre: string,
+  servicioNombre: string,
+  fechaServicio: string,
+  horaServicio: string,
+  horaLlegada: string,
+  grupoNombre: string,
+  respuesta: 'Sí' | 'No',
+  fechaCierre: string
+): string {
+  const esSi = respuesta === 'Sí';
+  const contenido = `
+    <h1 style="${EMAIL_ESTILOS.h1}">${esSi ? '¡Asistencia Confirmada!' : 'Respuesta Registrada'}</h1>
+    <p style="${EMAIL_ESTILOS.p}">Hola <strong>${escapeHtml(participanteNombre)}</strong>, hemos guardado tu respuesta: <strong>${respuesta}</strong>.</p>
+
+    ${
+      esSi
+        ? `<div style="${EMAIL_ESTILOS.callout}">
+            <span style="${EMAIL_ESTILOS.calloutLabel}">Hora de llegada requerida</span>
+            <span style="${EMAIL_ESTILOS.calloutTime}">${formatearHora12(horaLlegada)}</span>
+          </div>`
+        : ''
+    }
+
+    <div style="${EMAIL_ESTILOS.details}">
+      <p style="${EMAIL_ESTILOS.detailRow}"><strong>Servicio:</strong> ${escapeHtml(servicioNombre)}</p>
+      <p style="${EMAIL_ESTILOS.detailRow}"><strong>Grupo:</strong> ${escapeHtml(grupoNombre)}</p>
+      <p style="${EMAIL_ESTILOS.detailRow}"><strong>Fecha:</strong> ${fechaServicio}</p>
+      <p style="${EMAIL_ESTILOS.detailRowSecondary}"><strong>Hora de inicio del servicio:</strong> ${formatearHora12(horaServicio)}</p>
+    </div>
+
+    <p style="${EMAIL_ESTILOS.footer}">
+      ${
+        esSi
+          ? `Puedes modificar tu respuesta antes del ${fechaCierre} si surge algún imprevisto.`
+          : `Gracias por informarnos con tiempo. Puedes cambiar tu respuesta antes del ${fechaCierre} si tu disponibilidad cambia.`
+      }
+    </p>
+  `;
+  return renderEmailHtml('Confirmación Guardada', contenido);
 }
 
 export function renderFormularioConfirmacionHtml(
@@ -282,6 +397,11 @@ export function renderFormularioConfirmacionHtml(
     <h1>Confirmación de Asistencia</h1>
     <p>Hola <strong>${participanteNombre}</strong>, por favor confirma tu participación en el siguiente servicio:</p>
 
+    <div class="arrival-callout">
+      <span class="arrival-label">Hora de llegada requerida</span>
+      <span class="arrival-time">${formatearHora12(horaLlegada)}</span>
+    </div>
+
     <div class="details">
       <div class="details-row">
         <span class="details-label">Servicio:</span>
@@ -292,12 +412,8 @@ export function renderFormularioConfirmacionHtml(
         <span class="details-value">${fechaServicio}</span>
       </div>
       <div class="details-row">
-        <span class="details-label">Hora inicio:</span>
-        <span class="details-value">${horaServicio}</span>
-      </div>
-      <div class="details-row">
-        <span class="details-label">Hora llegada requerida:</span>
-        <span class="details-value highlight">${horaLlegada}</span>
+        <span class="details-label">Hora de inicio del servicio:</span>
+        <span class="details-value-secondary">${formatearHora12(horaServicio)}</span>
       </div>
       <div class="details-row">
         <span class="details-label">Fecha límite:</span>
@@ -482,7 +598,7 @@ export class ConfirmController {
     // (alta o cambio de respuesta). Es asíncrono/"fire and forget": no bloquea la respuesta
     // HTML al participante, y un fallo de envío no debe romper la confirmación ya registrada.
     if (resultado.debeNotificar && contexto.participanteCorreo) {
-      const htmlAcuse = renderConfirmacionExitosaHtml(
+      const htmlAcuse = renderAcuseDeReciboEmailHtml(
         contexto.participanteNombre,
         contexto.servicioNombre,
         contexto.fechaServicioStr,
@@ -490,8 +606,7 @@ export class ConfirmController {
         contexto.horaLlegadaStr,
         contexto.grupoNombre,
         resultado.respuesta,
-        contexto.fechaCierreStr,
-        resultado.esCambio
+        contexto.fechaCierreStr
       );
       obtenerMailerActivo()
         .enviar({

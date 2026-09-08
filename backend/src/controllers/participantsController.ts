@@ -41,15 +41,22 @@ export class ParticipantsController {
 
     const errores: string[] = [];
 
-    if (!nombre) {
-      errores.push('El nombre es requerido.');
+    // Mínimo 2 caracteres y no compuesto solo por dígitos (evita valores como "1" o "42").
+    const esTextoValido = (valor: string) => valor.length >= 2 && !/^\d+$/.test(valor);
+
+    if (!esTextoValido(nombre)) {
+      errores.push('El nombre debe tener al menos 2 caracteres y no puede ser solo números.');
     }
 
-    if (!primerApellido) {
-      errores.push('El primer apellido es requerido.');
+    if (!esTextoValido(primerApellido)) {
+      errores.push('El primer apellido debe tener al menos 2 caracteres y no puede ser solo números.');
     }
 
-    if (!correo || !correo.includes('@')) {
+    if (segundoApellido && !esTextoValido(segundoApellido)) {
+      errores.push('El segundo apellido debe tener al menos 2 caracteres y no puede ser solo números.');
+    }
+
+    if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
       errores.push('Ingresa un correo válido.');
     }
 
