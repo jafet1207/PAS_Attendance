@@ -212,6 +212,27 @@ para el squash y, por separado, para el force-push, antes de ejecutar cualquiera
 
 ---
 
+## 2026-09-08 — Etapas 8 y 9: hora de envío configurable y envío manual por servicio
+
+**Hallazgo, no relacionado, reportado por separado:** al correr la suite completa en esta máquina,
+`etapa5.test.ts` falla en 2 casos ("... con Bearer CRON_SECRET correcto ...", "... con sesión de
+coordinador activa ..."), ambos por la misma causa: `backend/.env` local tiene `GMAIL_USER`
+configurado (para poder probar el envío real por Gmail), y esas dos pruebas se autoprotegen
+explícitamente contra enviar un correo real si detectan esa variable presente. Confirmado que no
+es una regresión de las Etapas 8/9 comparando el resultado contra el código sin modificar
+(`git stash`): falla igual. No es un bug del código, es una condición del entorno local de
+pruebas; en CI (sin `GMAIL_USER`) no debería reproducirse.
+
+**Revisión de entrega (`/revisar-entrega` sobre los 5 commits sin pushear):** dictamen "Listo con
+seguimiento". Encontrado y corregido: `ESTADO_IMPLEMENTACION.md` no tenía filas para las Etapas 8
+y 9 pese a estar completas e implementadas — la tabla de estado quedaba desactualizada respecto al
+código ya commiteado. Quedan dos hallazgos menores (P3, sin corregir por ahora): `serviciosService.ts`
+escribe (congela conteos) dentro de una función de lectura usada por un `GET`, y
+`remindersController.ts` no valida que `servicioIds`/`participanteIds` sean numéricos antes de
+`Number(...)` (falla en silencio con `NaN`, sin riesgo de seguridad, en vez de responder 400).
+
+---
+
 ## Qué se revisó siempre / qué se delegó sin revisión
 
 **Siempre revisado antes de reportar algo como terminado:**
