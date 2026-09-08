@@ -45,15 +45,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Instalar dependencias (backend)
-        run: npm ci --prefix backend
-
-      - name: Instalar dependencias (frontend)
-        run: npm ci --prefix frontend
+      - name: "Instalar dependencias (workspaces: backend + frontend)"
+        run: npm ci
 
       - name: Dar permisos de ejecución a verificar.sh
         run: chmod +x ./verificar.sh
