@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Check } from 'lucide-react'
+import { ArrowLeft, Check, ImageDown } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import ErrorState from '../components/common/ErrorState'
 import PageContainer from '../components/layout/PageContainer'
 import Skeleton from '../components/common/Skeleton'
 import { ModernSelect } from '../components/form/ModernFields'
 import { getAsignaciones, getPuestos, guardarAsignacion } from '../services/servicesApi'
+import { exportarPuestosComoImagen } from '../utils/exportarPuestos'
 import { formatServiceDate } from '../utils/date'
 import styles from './RoleAssignmentPage.module.css'
 
@@ -26,6 +27,8 @@ export default function RoleAssignmentPage() {
   const [savingId, setSavingId] = useState(null)
   const [savedId, setSavedId] = useState(null)
   const [rowErrors, setRowErrors] = useState({})
+  const [exportando, setExportando] = useState(false)
+  const [exportError, setExportError] = useState(null)
 
   function load() {
     setError(null)
@@ -47,6 +50,7 @@ export default function RoleAssignmentPage() {
   if (error) return <PageContainer><ErrorState message={error} onRetry={load} /></PageContainer>
   if (data === null || catalogo === null) return <PageContainer><Skeleton /></PageContainer>
 
+  const hayPrincipalAsignado = data.participants.some((p) => p.puestos.some((puesto) => puesto.tipo === 'Principal'))
   const puestosPrincipales = catalogo.puestos.filter((p) => p.tipo === 'Principal' && p.activo)
   const puestosSecundarios = catalogo.puestos.filter((p) => p.tipo === 'Secundario' && p.activo)
   const opcionesPrincipal = [
@@ -69,6 +73,18 @@ export default function RoleAssignmentPage() {
       else secundarios.add(puestoId)
       return { ...current, [participantId]: { ...actual, secundarios } }
     })
+  }
+
+  async function exportarImagen() {
+    setExportando(true)
+    setExportError(null)
+    try {
+      await exportarPuestosComoImagen(data, catalogo)
+    } catch (requestError) {
+      setExportError(requestError.message || 'No fue posible generar la imagen.')
+    } finally {
+      setExportando(false)
+    }
   }
 
   async function guardarFila(participantId) {
@@ -97,9 +113,22 @@ export default function RoleAssignmentPage() {
     <PageContainer>
       <Link className={styles.back} to="/roles"><ArrowLeft size={18} /> Puestos</Link>
       <header className={styles.header}>
-        <h1>Asignar puestos</h1>
-        <p>{data.service.name} · {formatServiceDate(data.service.date)}</p>
+        <div>
+          <h1>Asignar puestos</h1>
+          <p>{data.service.name} · {formatServiceDate(data.service.date)}</p>
+        </div>
+        <button
+          className={styles.exportButton}
+          disabled={exportando || !hayPrincipalAsignado}
+          onClick={exportarImagen}
+          title={hayPrincipalAsignado ? undefined : 'Todavía nadie tiene un puesto Principal asignado.'}
+          type="button"
+        >
+          <ImageDown size={16} />
+          {exportando ? 'Generando…' : 'Exportar imagen'}
+        </button>
       </header>
+      {exportError && <div className={styles.exportError} role="alert">{exportError}</div>}
 
       <div className={styles.rows}>
         {data.participants.map((participant) => {
@@ -121,35 +150,37 @@ export default function RoleAssignmentPage() {
                 />
               </div>
 
-              <div className={styles.field}>
-                <span className={styles.fieldLabel}>Secundarios</span>
-                <div className={styles.chips}>
-                  {puestosSecundarios.map((puesto) => (
-                    <button
-                      className={`${styles.chip} ${fila.secundarios.has(puesto.id) ? styles.chipActive : ''}`}
-                      key={puesto.id}
-                      onClick={() => toggleSecundario(participant.id, puesto.id)}
-                      type="button"
-                    >
-                      {fila.secundarios.has(puesto.id) && <Check size={13} />}
-                      {puesto.nombre}
-                    </button>
-                  ))}
-                  {puestosSecundarios.length === 0 && <span className={styles.noChips}>Sin puestos secundarios en el catálogo.</span>}
+              <div className={styles.secondaryRow}>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>Secundarios</span>
+                  <div className={styles.chips}>
+                    {puestosSecundarios.map((puesto) => (
+                      <button
+                        className={`${styles.chip} ${fila.secundarios.has(puesto.id) ? styles.chipActive : ''}`}
+                        key={puesto.id}
+                        onClick={() => toggleSecundario(participant.id, puesto.id)}
+                        type="button"
+                      >
+                        {fila.secundarios.has(puesto.id) && <Check size={13} />}
+                        {puesto.nombre}
+                      </button>
+                    ))}
+                    {puestosSecundarios.length === 0 && <span className={styles.noChips}>Sin puestos secundarios en el catálogo.</span>}
+                  </div>
                 </div>
-              </div>
 
-              <div className={styles.rowActions}>
-                <button
-                  className={styles.saveButton}
-                  disabled={savingId === participant.id}
-                  onClick={() => guardarFila(participant.id)}
-                  type="button"
-                >
-                  {savingId === participant.id ? 'Guardando…' : 'Guardar'}
-                </button>
-                {savedId === participant.id && <span className={styles.savedNote}>Guardado</span>}
-                {rowErrors[participant.id] && <span className={styles.rowError}>{rowErrors[participant.id]}</span>}
+                <div className={styles.rowActions}>
+                  <button
+                    className={styles.saveButton}
+                    disabled={savingId === participant.id}
+                    onClick={() => guardarFila(participant.id)}
+                    type="button"
+                  >
+                    {savingId === participant.id ? 'Guardando…' : 'Guardar'}
+                  </button>
+                  {savedId === participant.id && <span className={styles.savedNote}>Guardado</span>}
+                  {rowErrors[participant.id] && <span className={styles.rowError}>{rowErrors[participant.id]}</span>}
+                </div>
               </div>
             </article>
           )
