@@ -118,3 +118,16 @@ export async function setPuestoStatus(id, activo) {
   })
   return body.data
 }
+
+export async function getAsignaciones(servicioId) {
+  const body = await apiRequest(`/api/services/${servicioId}/asignaciones`)
+  return body.data
+}
+
+export async function guardarAsignacion(servicioId, participanteId, puestoIds) {
+  const body = await apiRequest(`/api/services/${servicioId}/asignaciones/${participanteId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ puestoIds }),
+  })
+  return body.data
+}

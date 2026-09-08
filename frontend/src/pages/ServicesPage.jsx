@@ -46,6 +46,15 @@ export default function ServicesPage() {
     })
   }, [services, search, status])
 
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const aExpired = a.daysUntilClosing < 0
+      const bExpired = b.daysUntilClosing < 0
+      if (aExpired !== bExpired) return aExpired ? 1 : -1
+      return a.daysUntilClosing - b.daysUntilClosing
+    })
+  }, [filtered])
+
   function clearFilters() {
     setSearch('')
     setStatus('')
@@ -54,7 +63,7 @@ export default function ServicesPage() {
   const hasFilters = Boolean(search || status)
 
   const { page, setPage, pageSize, setPageSize, pageItems, totalPages, totalItems } =
-    usePagination(filtered)
+    usePagination(sorted)
 
   useEffect(() => {
     setPage(1)

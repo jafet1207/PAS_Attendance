@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Pencil, Plus, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, Pencil, Plus, ToggleLeft, ToggleRight } from 'lucide-react'
 import Badge from '../components/common/Badge'
 import Button from '../components/common/Button'
 import ErrorState from '../components/common/ErrorState'
@@ -8,7 +9,8 @@ import PageContainer from '../components/layout/PageContainer'
 import PageHeader from '../components/layout/PageHeader'
 import Skeleton from '../components/common/Skeleton'
 import { ModernSelect } from '../components/form/ModernFields'
-import { createPuesto, getPuestos, setPuestoStatus, updatePuesto } from '../services/servicesApi'
+import { createPuesto, getPuestos, getServices, setPuestoStatus, updatePuesto } from '../services/servicesApi'
+import { formatClosingDate, formatServiceDate } from '../utils/date'
 import styles from './RolesPage.module.css'
 
 const emptyForm = { nombre: '', tipo: 'Principal', area_id: '' }
@@ -42,6 +44,7 @@ function PuestoRow({ puesto, onEdit, onToggle, updating }) {
 
 export default function RolesPage() {
   const [data, setData] = useState(null)
+  const [services, setServices] = useState(null)
   const [error, setError] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -52,7 +55,12 @@ export default function RolesPage() {
 
   function load() {
     setError(null)
-    getPuestos().then(setData).catch(() => setError('No pudimos cargar el catálogo de puestos.'))
+    Promise.all([getPuestos(), getServices()])
+      .then(([puestos, servicios]) => {
+        setData(puestos)
+        setServices(servicios)
+      })
+      .catch(() => setError('No pudimos cargar la pantalla de Puestos.'))
   }
   useEffect(() => {
     load()
@@ -135,8 +143,9 @@ export default function RolesPage() {
   }
 
   if (error && data === null) return <PageContainer><ErrorState message={error} onRetry={load} /></PageContainer>
-  if (data === null) return <PageContainer><Skeleton /></PageContainer>
+  if (data === null || services === null) return <PageContainer><Skeleton /></PageContainer>
 
+  const serviciosParaAsignar = services.filter((s) => s.assignmentWindowOpen)
   const areaOptions = data.areas.map((a) => ({ value: a.id, label: a.nombre }))
   const secundarios = data.puestos.filter((p) => p.tipo === 'Secundario')
   const gruposPorArea = data.areas.map((area) => ({
@@ -147,7 +156,7 @@ export default function RolesPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Roles"
+        title="Puestos"
         actions={(
           <Button size="sm" onClick={openCreateModal}>
             <Plus size={16} />
@@ -157,6 +166,26 @@ export default function RolesPage() {
       />
 
       {error && <div className={styles.inlineError} role="alert">{error}</div>}
+
+      <section className={styles.catalog}>
+        <h2 className={styles.sectionTitle}>Asignar puestos por servicio</h2>
+        <div className={styles.areaGroup}>
+          <div className={styles.puestoList}>
+            {serviciosParaAsignar.map((service) => (
+              <Link className={styles.serviceRow} key={service.id} to={`/roles/services/${service.id}`}>
+                <div>
+                  <strong className={styles.serviceName}>{service.name}</strong>
+                  <span className={styles.serviceDates}>{formatServiceDate(service.date)} · Cierre {formatClosingDate(service.closingDate)}</span>
+                </div>
+                <ArrowRight size={18} />
+              </Link>
+            ))}
+            {serviciosParaAsignar.length === 0 && (
+              <p className={styles.empty}>Ningún servicio está en la ventana de asignación ahora mismo (debe estar cerrado y no haber ocurrido todavía).</p>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section className={styles.catalog}>
         <h2 className={styles.sectionTitle}>Catálogo de puestos</h2>

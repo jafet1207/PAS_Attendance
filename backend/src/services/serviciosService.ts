@@ -85,6 +85,20 @@ export function estaEnVentanaDeEnvioRecordatorio(
   return ventanaAbierta && BUSINESS_CONSTANTS.DIAS_DE_ENVIO_RECORDATORIO.includes(diasParaCierre);
 }
 
+/**
+ * RN-14: los puestos de un servicio solo pueden asignarse una vez cerrada su ventana de
+ * confirmación y mientras el servicio todavía no haya ocurrido. Se expone acá (no solo en
+ * `puestosService.ts`) por el mismo motivo que `estaEnVentanaDeEnvioRecordatorio`: la necesita
+ * `servicioAJson` para que el frontend decida cuándo ofrecer la pantalla de asignación sin
+ * duplicar el cálculo de días.
+ */
+export function estaEnVentanaDeAsignacionDePuestos(
+  ventanaAbierta: boolean,
+  diasParaServicio: number
+): boolean {
+  return !ventanaAbierta && diasParaServicio >= 0;
+}
+
 export interface ServicioEnriquecido extends Servicio {
   nombre: string;
   pendientes: number;
@@ -92,6 +106,7 @@ export interface ServicioEnriquecido extends Servicio {
   confirmados: number;
   ventana_abierta: boolean;
   dias_para_cierre: number;
+  dias_para_servicio: number;
   estado: 'Pendiente' | 'Vencido' | 'Cerrado' | 'Completo';
 }
 
@@ -108,6 +123,7 @@ export interface ServiceJson {
   daysUntilClosing: number;
   windowOpen: boolean;
   reminderWindowOpen: boolean;
+  assignmentWindowOpen: boolean;
   status: 'Pendiente' | 'Vencido' | 'Cerrado' | 'Completo';
 }
 
@@ -189,6 +205,10 @@ export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecid
     const pendientes = totalParticipantesServicio - confirmadosServicio;
     const diffTime = fechaCierreDate.getTime() - hoyDate.getTime();
     const diasParaCierre = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    const fechaServicioDate = parseDate(formatDateYMD(servicio.fecha_servicio));
+    const diasParaServicio = Math.round(
+      (fechaServicioDate.getTime() - hoyDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
     const estado = calcularEstado(ventanaAbierta, pendientes);
 
     const servicioEnriquecido: ServicioEnriquecido = {
@@ -199,6 +219,7 @@ export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecid
       confirmados: confirmadosServicio,
       ventana_abierta: ventanaAbierta,
       dias_para_cierre: diasParaCierre,
+      dias_para_servicio: diasParaServicio,
       estado,
     };
 
@@ -239,6 +260,7 @@ export function servicioAJson(s: ServicioEnriquecido): ServiceJson {
     daysUntilClosing: s.dias_para_cierre,
     windowOpen: s.ventana_abierta,
     reminderWindowOpen: estaEnVentanaDeEnvioRecordatorio(s.ventana_abierta, s.dias_para_cierre),
+    assignmentWindowOpen: estaEnVentanaDeAsignacionDePuestos(s.ventana_abierta, s.dias_para_servicio),
     status: s.estado,
   };
 }

@@ -13,6 +13,7 @@ import { ConfirmController } from './controllers/confirmController.js';
 import { RemindersController } from './controllers/remindersController.js';
 import { SettingsController } from './controllers/settingsController.js';
 import { PuestosController } from './controllers/puestosController.js';
+import { AsignacionesController } from './controllers/asignacionesController.js';
 import { requireAuth, requireReminderAuth } from './middlewares/auth.js';
 
 export function createApp(): express.Express {
@@ -111,6 +112,14 @@ export function createApp(): express.Express {
   app.post('/api/puestos', requireAuth, PuestosController.createPuesto);
   app.patch('/api/puestos/:id', requireAuth, PuestosController.updatePuesto);
   app.patch('/api/puestos/:id/status', requireAuth, PuestosController.setPuestoStatus);
+
+  // Asignación de puestos por servicio (Etapa 11, RF-7.5/7.6, protegidas)
+  app.get('/api/services/:id/asignaciones', requireAuth, AsignacionesController.getAsignaciones);
+  app.put(
+    '/api/services/:id/asignaciones/:participanteId',
+    requireAuth,
+    AsignacionesController.guardarAsignacion
+  );
 
   return app;
 }

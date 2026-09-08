@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   },
   {
     to: '/roles',
-    label: 'Roles',
+    label: 'Puestos',
     icon: Tag,
     isActive: (pathname) => pathname.startsWith('/roles'),
   },

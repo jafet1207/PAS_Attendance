@@ -1,0 +1,149 @@
+.back {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  gap: var(--space-2);
+  text-decoration: none;
+}
+
+.header {
+  margin: var(--space-6) 0;
+}
+
+.header h1 {
+  color: var(--color-primary);
+  font-size: clamp(1.7rem, 4vw, 2.2rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.header p {
+  color: var(--color-text-muted);
+  margin: var(--space-1) 0 0;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.identity strong {
+  color: var(--color-text);
+  font-size: 0.9375rem;
+}
+
+.identity span {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.fieldLabel {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  align-items: center;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 var(--space-3);
+}
+
+.chipActive {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.noChips {
+  color: var(--color-text-faint);
+  font-size: 0.8125rem;
+}
+
+.rowActions {
+  align-items: center;
+  display: flex;
+  gap: var(--space-3);
+}
+
+.saveButton {
+  align-items: center;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  color: white;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 650;
+  height: 40px;
+  justify-content: center;
+  padding: 0 var(--space-4);
+}
+
+.saveButton:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.saveButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.savedNote {
+  color: var(--color-success);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.rowError {
+  color: var(--color-danger);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.empty {
+  color: var(--color-text-muted);
+  padding: var(--space-8);
+  text-align: center;
+}

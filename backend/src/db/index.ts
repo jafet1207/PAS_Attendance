@@ -258,6 +258,20 @@ export async function initDb(): Promise<void> {
       }
     }
 
+    // RN-15/RN-16: asignación de un puesto a un participante para un servicio puntual (Etapa 11).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS Asignacion_Puesto (
+        id SERIAL PRIMARY KEY,
+        participante_id INTEGER NOT NULL REFERENCES Participante(id),
+        servicio_id INTEGER NOT NULL REFERENCES Servicio(id),
+        puesto_id INTEGER NOT NULL REFERENCES Puesto(id),
+        UNIQUE (participante_id, servicio_id, puesto_id)
+      );
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_asignacion_servicio ON Asignacion_Puesto(servicio_id);
+    `);
+
     await client.query('COMMIT');
     console.log('[DB] Base de datos PostgreSQL inicializada exitosamente.');
   } catch (error) {
