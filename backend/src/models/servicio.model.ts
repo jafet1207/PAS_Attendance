@@ -41,6 +41,23 @@ export class ServicioModel {
     return res.rows[0].id;
   }
 
+  static async update(
+    id: number,
+    fechaServicio: string,
+    horaServicio: string,
+    fechaCierre: string,
+    tipo: 'Regular' | 'Extraordinario'
+  ): Promise<void> {
+    await query(
+      `
+      UPDATE Servicio
+      SET fecha_servicio = $1, hora_servicio = $2, fecha_cierre_confirmacion = $3, tipo = $4
+      WHERE id = $5
+    `,
+      [fechaServicio, horaServicio, fechaCierre, tipo, id]
+    );
+  }
+
   /** Congela, para un servicio que ya cerró, cuántos participantes estaban convocados/confirmados
    * en ese momento. A partir de ahí, desactivar o reactivar servidores ya no debe mover estos
    * números (solo aplican a servicios cuya ventana de confirmación todavía está abierta).

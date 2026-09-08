@@ -23,6 +23,14 @@ export async function createService(data) {
   return body.data
 }
 
+export async function updateService(id, data) {
+  const body = await apiRequest(`/api/services/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+  return body.data
+}
+
 export async function getServiceDetail(id) {
   const body = await apiRequest(`/api/services/${id}`)
   return body.data

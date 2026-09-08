@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { ServicioModel } from '../models/servicio.model.js';
+import { RespuestaModel } from '../models/respuesta.model.js';
+import { IntentoEnvioModel } from '../models/intentoEnvio.model.js';
 import { config } from '../config/env.js';
 import {
   obtenerServiciosEnriquecidos,
@@ -9,6 +11,69 @@ import {
   servicioAJson,
   parseDate,
 } from '../services/serviciosService.js';
+
+interface DatosServicioValidados {
+  fechaServicio: string;
+  horaServicio: string;
+  fechaCierre: string;
+  tipo: 'Regular' | 'Extraordinario';
+}
+
+/**
+ * Reglas comunes a la creación y a la edición de un servicio (formato de hora, tipo válido,
+ * cierre estrictamente anterior al servicio): las mismas para no duplicar la regla de negocio
+ * en dos controladores.
+ */
+function validarDatosServicio(datos: Record<string, unknown>): {
+  errores: string[];
+  datos?: DatosServicioValidados;
+} {
+  const fechaServicio = (datos.fecha_servicio || '').toString().trim();
+  const horaServicio = (datos.hora_servicio || '').toString().trim();
+  const fechaCierre = (datos.fecha_cierre_confirmacion || '').toString().trim();
+  const tipo = (datos.tipo || 'Regular').toString().trim();
+
+  const errores: string[] = [];
+
+  if (!fechaServicio || !horaServicio || !fechaCierre || !tipo) {
+    errores.push('Todos los campos son requeridos.');
+  }
+
+  if (tipo !== 'Regular' && tipo !== 'Extraordinario') {
+    errores.push('Tipo de servicio inválido.');
+  }
+
+  if (horaServicio && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(horaServicio)) {
+    errores.push('Formato de hora inválido.');
+  }
+
+  if (fechaServicio && fechaCierre) {
+    const dateServicio = parseDate(fechaServicio);
+    const dateCierre = parseDate(fechaCierre);
+
+    if (isNaN(dateServicio.getTime()) || isNaN(dateCierre.getTime())) {
+      errores.push('Formato de fecha inválido.');
+    } else if (dateCierre >= dateServicio) {
+      errores.push(
+        'La fecha de cierre de confirmación debe ser estrictamente anterior a la fecha del servicio.'
+      );
+    }
+  }
+
+  if (errores.length > 0) {
+    return { errores };
+  }
+
+  return {
+    errores: [],
+    datos: {
+      fechaServicio,
+      horaServicio: horaServicio.length === 5 ? `${horaServicio}:00` : horaServicio,
+      fechaCierre,
+      tipo: tipo as 'Regular' | 'Extraordinario',
+    },
+  };
+}
 
 export class ServicesController {
   static getConfig(req: Request, res: Response): void {
@@ -33,41 +98,7 @@ export class ServicesController {
   }
 
   static async createService(req: Request, res: Response): Promise<void> {
-    const datos = req.body || {};
-    const fechaServicio = (datos.fecha_servicio || '').toString().trim();
-    const horaServicio = (datos.hora_servicio || '').toString().trim();
-    const fechaCierre = (datos.fecha_cierre_confirmacion || '').toString().trim();
-    const tipo = (datos.tipo || 'Regular').toString().trim();
-
-    const errores: string[] = [];
-
-    if (!fechaServicio || !horaServicio || !fechaCierre || !tipo) {
-      errores.push('Todos los campos son requeridos.');
-    }
-
-    if (tipo !== 'Regular' && tipo !== 'Extraordinario') {
-      errores.push('Tipo de servicio inválido.');
-    }
-
-    // Validar formato de hora (HH:MM)
-    if (horaServicio && !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(horaServicio)) {
-      errores.push('Formato de hora inválido.');
-    }
-
-    // Validar fechas
-    if (fechaServicio && fechaCierre) {
-      const dateServicio = parseDate(fechaServicio);
-      const dateCierre = parseDate(fechaCierre);
-
-      if (isNaN(dateServicio.getTime()) || isNaN(dateCierre.getTime())) {
-        errores.push('Formato de fecha inválido.');
-      } else if (dateCierre >= dateServicio) {
-        errores.push(
-          'La fecha de cierre de confirmación debe ser estrictamente anterior a la fecha del servicio.'
-        );
-      }
-    }
-
+    const { errores, datos } = validarDatosServicio(req.body || {});
     if (errores.length > 0) {
       res.status(400).json({ errors: errores });
       return;
@@ -75,10 +106,10 @@ export class ServicesController {
 
     try {
       const servicioId = await ServicioModel.create(
-        fechaServicio,
-        horaServicio.length === 5 ? `${horaServicio}:00` : horaServicio,
-        fechaCierre,
-        tipo as 'Regular' | 'Extraordinario'
+        datos!.fechaServicio,
+        datos!.horaServicio,
+        datos!.fechaCierre,
+        datos!.tipo
       );
 
       const servicioEnriquecido = await obtenerServicioEnriquecidoPorId(servicioId);
@@ -93,6 +124,66 @@ export class ServicesController {
     } catch (error) {
       console.error('[ServicesController.createService Error]', error);
       res.status(500).json({ error: 'No fue posible guardar el servicio.' });
+    }
+  }
+
+  /**
+   * Solo se puede editar un servicio mientras no tenga actividad real registrada: ninguna
+   * Respuesta (confirmación) ni ningún Intento_Envio (recordatorio ya despachado). Autoritativo
+   * en el backend, no solo un adorno de la UI — un PATCH directo no debe poder saltarse la regla
+   * aunque la pantalla la respete.
+   */
+  static async updateService(req: Request, res: Response): Promise<void> {
+    const servicioId = parseInt(req.params.id, 10);
+    if (isNaN(servicioId)) {
+      res.status(400).json({ error: 'ID de servicio inválido.' });
+      return;
+    }
+
+    const { errores, datos } = validarDatosServicio(req.body || {});
+    if (errores.length > 0) {
+      res.status(400).json({ errors: errores });
+      return;
+    }
+
+    try {
+      const servicio = await ServicioModel.getById(servicioId);
+      if (!servicio) {
+        res.status(404).json({ error: 'Servicio no encontrado.' });
+        return;
+      }
+
+      const [tieneRespuestas, tieneEnvios] = await Promise.all([
+        RespuestaModel.existsForServicio(servicioId),
+        IntentoEnvioModel.existsForServicio(servicioId),
+      ]);
+      if (tieneRespuestas || tieneEnvios) {
+        res.status(409).json({
+          error: 'Este servicio ya tiene actividad registrada (confirmaciones o recordatorios enviados) y no se puede editar.',
+        });
+        return;
+      }
+
+      await ServicioModel.update(
+        servicioId,
+        datos!.fechaServicio,
+        datos!.horaServicio,
+        datos!.fechaCierre,
+        datos!.tipo
+      );
+
+      const servicioEnriquecido = await obtenerServicioEnriquecidoPorId(servicioId);
+      if (!servicioEnriquecido) {
+        res.status(500).json({ error: 'No se pudo recuperar el servicio recién actualizado.' });
+        return;
+      }
+
+      res.json({
+        data: servicioAJson(servicioEnriquecido),
+      });
+    } catch (error) {
+      console.error('[ServicesController.updateService Error]', error);
+      res.status(500).json({ error: 'No fue posible actualizar el servicio.' });
     }
   }
 

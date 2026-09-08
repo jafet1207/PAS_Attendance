@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, Save, Users } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import Button from '../components/common/Button'
 import InfoBanner from '../components/common/InfoBanner'
 import PageContainer from '../components/layout/PageContainer'
 import PageHeader from '../components/layout/PageHeader'
 import FormSection from '../components/layout/FormSection'
-import { createService, getServicesConfig } from '../services/servicesApi'
+import Skeleton from '../components/common/Skeleton'
+import { createService, getServiceDetail, getServicesConfig, updateService } from '../services/servicesApi'
 import { ModernDateField, ModernSelect, ModernTimeField } from '../components/form/ModernFields'
 import { subtractDays } from '../utils/date'
 import styles from './CreateServicePage.module.css'
@@ -15,7 +16,11 @@ const initialForm = { fecha_servicio: '', hora_servicio: '', tipo: 'Regular', fe
 
 export default function CreateServicePage() {
   const navigate = useNavigate()
+  const { serviceId } = useParams()
+  const isEditing = Boolean(serviceId)
   const [form, setForm] = useState(initialForm)
+  const [loading, setLoading] = useState(isEditing)
+  const [loadError, setLoadError] = useState(null)
   const [errors, setErrors] = useState([])
   const [saving, setSaving] = useState(false)
   const [diasCierre, setDiasCierre] = useState({ Regular: 3, Extraordinario: 1 })
@@ -26,6 +31,23 @@ export default function CreateServicePage() {
       .then((cfg) => setDiasCierre({ Regular: cfg.diasCierreRegular, Extraordinario: cfg.diasCierreExtraordinario }))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!isEditing) return
+    setCierreEditadoManualmente(true)
+    getServiceDetail(serviceId)
+      .then(({ service }) => {
+        setForm({
+          fecha_servicio: service.date.slice(0, 10),
+          hora_servicio: service.date.slice(11, 16),
+          tipo: service.type,
+          fecha_cierre_confirmacion: service.closingDate,
+        })
+        setLoading(false)
+      })
+      .catch(() => setLoadError('No pudimos cargar este servicio.'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceId])
 
   function calcularCierrePorDefecto(fechaServicio, tipo) {
     if (!fechaServicio) return ''
@@ -68,7 +90,7 @@ export default function CreateServicePage() {
     setSaving(true)
     setErrors([])
     try {
-      const service = await createService(form)
+      const service = isEditing ? await updateService(serviceId, form) : await createService(form)
       navigate(`/services/${service.id}`)
     } catch (error) {
       setErrors(error.message ? [error.message] : ['No fue posible guardar el servicio.'])
@@ -77,12 +99,15 @@ export default function CreateServicePage() {
     }
   }
 
+  if (isEditing && loadError) return <PageContainer><div className={styles.errors} role="alert"><p>{loadError}</p></div></PageContainer>
+  if (isEditing && loading) return <PageContainer><Skeleton /></PageContainer>
+
   return (
     <PageContainer className={styles.compactPage}>
       <PageHeader
-        backTo="/services"
+        backTo={isEditing ? `/services/${serviceId}` : '/services'}
         backLabel="Servicios"
-        title="Programar un servicio"
+        title={isEditing ? 'Editar servicio' : 'Programar un servicio'}
         illustration={<CalendarDays size={96} strokeWidth={1} />}
       />
       <form className={styles.form} onSubmit={handleSubmit}>
@@ -105,7 +130,7 @@ export default function CreateServicePage() {
           </FormSection>
 
           <div className={styles.actions}>
-            <Link to="/services" className={styles.cancel}>Cancelar</Link>
+            <Link to={isEditing ? `/services/${serviceId}` : '/services'} className={styles.cancel}>Cancelar</Link>
             <Button type="submit" disabled={saving || !canSave}><Save size={18} />{saving ? 'Guardando…' : 'Guardar servicio'}</Button>
           </div>
         </div>

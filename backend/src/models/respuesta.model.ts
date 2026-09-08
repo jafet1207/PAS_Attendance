@@ -30,6 +30,11 @@ export class RespuestaModel {
     return res.rows[0] || null;
   }
 
+  static async existsForServicio(servicioId: number): Promise<boolean> {
+    const res = await query('SELECT 1 FROM Respuesta WHERE servicio_id = $1 LIMIT 1', [servicioId]);
+    return res.rows.length > 0;
+  }
+
   /**
    * Registra la respuesta de un participante para un servicio. Si ya existía una respuesta
    * distinta, la actualiza y controla el tope de notificaciones (RN-10: máximo 2 correos de

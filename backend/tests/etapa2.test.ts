@@ -7,6 +7,8 @@ import {
   formatearNombreServicio,
   compararServiciosPorPrioridad,
 } from '../src/services/serviciosService.js';
+import { RespuestaModel } from '../src/models/respuesta.model.js';
+import { IntentoEnvioModel } from '../src/models/intentoEnvio.model.js';
 
 function addDays(days: number): string {
   const d = new Date();
@@ -268,5 +270,108 @@ describe('Etapa 2: Flujo de éxito contra base de datos real', () => {
     expect(Array.isArray(res.body.data.submissions)).toBe(true);
     // Servicio recién creado: nunca se le han enviado recordatorios.
     expect(res.body.data.submissions.length).toBe(0);
+  });
+
+  describe('PATCH /api/services/:id (edición de fechas sin actividad)', () => {
+    it('sin autenticación retorna 401', async () => {
+      const res = await request(app).patch(`/api/services/${createdServiceId}`).send({
+        fecha_servicio: fechaServicio,
+        hora_servicio: '10:00',
+        fecha_cierre_confirmacion: fechaCierre,
+        tipo: 'Regular',
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('Rechaza si la fecha de cierre es igual o posterior a la fecha del servicio', async () => {
+      const res = await agent.patch(`/api/services/${createdServiceId}`).send({
+        fecha_servicio: fechaServicio,
+        hora_servicio: '10:00',
+        fecha_cierre_confirmacion: fechaServicio,
+        tipo: 'Regular',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.errors).toContain(
+        'La fecha de cierre de confirmación debe ser estrictamente anterior a la fecha del servicio.'
+      );
+    });
+
+    it('Actualiza las fechas de un servicio sin actividad registrada', async () => {
+      const nuevaFechaServicio = addDays(410);
+      const nuevaFechaCierre = addDays(409);
+
+      const res = await agent.patch(`/api/services/${createdServiceId}`).send({
+        fecha_servicio: nuevaFechaServicio,
+        hora_servicio: '11:00',
+        fecha_cierre_confirmacion: nuevaFechaCierre,
+        tipo: 'Extraordinario',
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.id).toBe(createdServiceId);
+      expect(res.body.data.type).toBe('Extraordinario');
+      expect(res.body.data.date.startsWith(nuevaFechaServicio)).toBe(true);
+      expect(res.body.data.closingDate).toBe(nuevaFechaCierre);
+    });
+
+    it('Rechaza editar un servicio que ya tiene una confirmación registrada', async () => {
+      const servicioConRespuesta = (
+        await agent.post('/api/services').send({
+          fecha_servicio: addDays(420),
+          hora_servicio: '09:00',
+          fecha_cierre_confirmacion: addDays(415),
+          tipo: 'Regular',
+        })
+      ).body.data.id;
+
+      const participante = await agent.post('/api/participants').send({
+        nombre: 'Prueba',
+        primer_apellido: 'EditarServicio',
+        correo: `prueba.editar.servicio.${Date.now()}@ejemplo-sintetico.test`,
+        grupo_id: 1,
+      });
+
+      await RespuestaModel.registrar(participante.body.data.id, servicioConRespuesta, 'Sí');
+
+      const res = await agent.patch(`/api/services/${servicioConRespuesta}`).send({
+        fecha_servicio: addDays(421),
+        hora_servicio: '09:00',
+        fecha_cierre_confirmacion: addDays(416),
+        tipo: 'Regular',
+      });
+
+      expect(res.status).toBe(409);
+    });
+
+    it('Rechaza editar un servicio que ya tiene un recordatorio registrado', async () => {
+      const servicioConEnvio = (
+        await agent.post('/api/services').send({
+          fecha_servicio: addDays(430),
+          hora_servicio: '09:00',
+          fecha_cierre_confirmacion: addDays(425),
+          tipo: 'Regular',
+        })
+      ).body.data.id;
+
+      const participante = await agent.post('/api/participants').send({
+        nombre: 'Prueba',
+        primer_apellido: 'EditarServicioEnvio',
+        correo: `prueba.editar.servicio.envio.${Date.now()}@ejemplo-sintetico.test`,
+        grupo_id: 1,
+      });
+
+      await IntentoEnvioModel.registrarLote(servicioConEnvio, [
+        { participanteId: participante.body.data.id, numeroRecordatorio: 1, resultado: 'exitoso' },
+      ]);
+
+      const res = await agent.patch(`/api/services/${servicioConEnvio}`).send({
+        fecha_servicio: addDays(431),
+        hora_servicio: '09:00',
+        fecha_cierre_confirmacion: addDays(426),
+        tipo: 'Regular',
+      });
+
+      expect(res.status).toBe(409);
+    });
   });
 });

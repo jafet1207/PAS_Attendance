@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Mail, Search } from 'lucide-react'
+import { ArrowLeft, Mail, Pencil, Search } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import ErrorState from '../components/common/ErrorState'
 import Pagination from '../components/common/Pagination'
@@ -57,6 +57,9 @@ export default function ServiceDetailPage() {
   const { service } = detail
   const confirmed = detail.participants.filter((participant) => participant.status !== 'Pendiente').length
   const pending = detail.participants.length - confirmed
+  // Solo se puede editar mientras el servicio no tenga actividad real: nadie ha respondido y
+  // no se le ha enviado ningún recordatorio todavía (autoritativo en el backend, esto es solo UX).
+  const canEdit = detail.participants.every((participant) => participant.status === 'Pendiente' && !participant.lastDelivery)
   return (
     <PageContainer>
       <Link className={styles.back} to="/services"><ArrowLeft size={18} /> Servicios</Link>
@@ -68,7 +71,10 @@ export default function ServiceDetailPage() {
           <div><strong>{confirmed}</strong><span>Confirmados</span></div>
           <div><strong>{pending}</strong><span>Pendientes</span></div>
         </div>
-        <ServiceStatusBadge status={service.status} />
+        <div className={styles.headerActions}>
+          <ServiceStatusBadge status={service.status} />
+          {canEdit && <Link className={styles.editLink} to={`/services/${service.id}/edit`}><Pencil size={16} /> Editar</Link>}
+        </div>
       </header>
       <section className={styles.participants}>
         <div className={styles.listHeader}><div><h2>Personas convocadas</h2><p>Revisa la respuesta y el último recordatorio de cada persona.</p></div><Link to={`/services/${service.id}/submissions`}><Mail size={17} /> Ver envíos</Link></div>

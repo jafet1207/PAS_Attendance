@@ -35,6 +35,7 @@ export default function App() {
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/services/new" element={<CreateServicePage />} />
         <Route path="/services/:serviceId" element={<ServiceDetailPage />} />
+        <Route path="/services/:serviceId/edit" element={<CreateServicePage />} />
         <Route path="/services/:serviceId/submissions" element={<ServiceSubmissionsPage />} />
         <Route path="/people" element={<PeoplePage />} />
         <Route path="/roles" element={<RolesPage />} />

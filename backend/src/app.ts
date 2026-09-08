@@ -81,6 +81,7 @@ export function createApp(): express.Express {
   app.get('/api/services/config', requireAuth, ServicesController.getConfig);
   app.get('/api/services', requireAuth, ServicesController.getServices);
   app.post('/api/services', requireAuth, ServicesController.createService);
+  app.patch('/api/services/:id', requireAuth, ServicesController.updateService);
   app.get('/api/services/:id', requireAuth, ServicesController.getServiceDetail);
   app.get('/api/services/:id/submissions', requireAuth, ServicesController.getServiceSubmissions);
 

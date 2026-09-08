@@ -10,6 +10,11 @@ export interface IntentoEnvio {
 }
 
 export class IntentoEnvioModel {
+  static async existsForServicio(servicioId: number): Promise<boolean> {
+    const res = await query('SELECT 1 FROM Intento_Envio WHERE servicio_id = $1 LIMIT 1', [servicioId]);
+    return res.rows.length > 0;
+  }
+
   /**
    * Registra en una sola sentencia todos los intentos de un servicio (uno por participante),
    * en vez de un INSERT por participante: evita un round-trip de red por participante contra
