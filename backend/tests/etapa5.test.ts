@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
+import { Request } from 'express';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
 import { generarIcs, ejecutarCicloDeRecordatorios } from '../src/services/recordatoriosService.js';
+import { opcionesDesdeCuerpo } from '../src/controllers/remindersController.js';
+import { estaEnVentanaDeEnvioRecordatorio } from '../src/services/serviciosService.js';
 import { ScriptedMailer, MockMailer, GmailMailer, Mailer } from '../src/mailer/index.js';
 import { RespuestaModel } from '../src/models/respuesta.model.js';
+import { query } from '../src/db/index.js';
 
 function addDays(days: number): string {
   const d = new Date();
@@ -73,6 +77,32 @@ describe('Etapa 5: Reglas de dominio en memoria', () => {
     const mailer = new GmailMailer();
     expect(await mailer.enviar({ to: 'servidor@outlook.com', subject: 's', html: '<p></p>' })).toBe(true);
     expect(await mailer.enviar({ to: 'otro@hotmail.com', subject: 's', html: '<p></p>' })).toBe(true);
+  });
+
+  it('RN-13: estaEnVentanaDeEnvioRecordatorio solo es true dentro de la ventana RN-7 y con la ventana de confirmación abierta', () => {
+    expect(estaEnVentanaDeEnvioRecordatorio(true, 2)).toBe(true);
+    expect(estaEnVentanaDeEnvioRecordatorio(true, 1)).toBe(true);
+    expect(estaEnVentanaDeEnvioRecordatorio(true, 0)).toBe(true);
+    expect(estaEnVentanaDeEnvioRecordatorio(true, 5)).toBe(false); // fuera de la ventana de envío
+    expect(estaEnVentanaDeEnvioRecordatorio(false, 0)).toBe(false); // ventana de confirmación ya cerrada
+  });
+
+  it('RN-13: opcionesDesdeCuerpo acota servicioIds con sesión de coordinador aunque NODE_ENV no sea "test"', () => {
+    const nodeEnvOriginal = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const reqConSesion = {
+        session: { coordinador_autenticado: true },
+        body: { servicioIds: [7], participanteIds: [9] },
+      } as unknown as Request;
+      // participanteIds sigue exclusivo de pruebas: una sesión de coordinador solo habilita servicioIds.
+      expect(opcionesDesdeCuerpo(reqConSesion)).toEqual({ servicioIds: [7] });
+
+      const reqSinSesion = { session: undefined, body: { servicioIds: [7] } } as unknown as Request;
+      expect(opcionesDesdeCuerpo(reqSinSesion)).toEqual({});
+    } finally {
+      process.env.NODE_ENV = nodeEnvOriginal;
+    }
   });
 });
 
@@ -165,19 +195,43 @@ describe('Etapa 5: Flujo de éxito contra base de datos real', () => {
     expect(resumen.recordatorios_fallidos).toBe(0);
   });
 
-  it('RN-6: tope de 3 recordatorios exitosos por participante/servicio', async () => {
+  it('RN-6: tope de 3 recordatorios exitosos por participante/servicio (a lo largo de varios días)', async () => {
     const servidorId = await crearParticipante(1, 'tope');
     const servicioId = await crearServicioAbierto();
     const opciones = { servicioIds: [servicioId], participanteIds: [servidorId] };
 
-    const r1 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
-    const r2 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
-    const r3 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
-    const r4 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
+    // Simula 2 recordatorios exitosos ya enviados en días anteriores: no se puede lograr esto
+    // llamando al ciclo varias veces en la misma corrida, porque la regla de "no reenviar al
+    // mismo servidor el mismo día" (ver ajuste de hora de envío) lo impediría.
+    await query(
+      `
+      INSERT INTO Intento_Envio (participante_id, servicio_id, numero_recordatorio, resultado, timestamp)
+      VALUES ($1, $2, 1, 'exitoso', NOW() - interval '2 days'),
+             ($1, $2, 2, 'exitoso', NOW() - interval '1 day')
+    `,
+      [servidorId, servicioId]
+    );
 
-    expect([r1, r2, r3].every((r) => r.recordatorios_exitosos === 1)).toBe(true);
+    const r3 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
+    expect(r3.recordatorios_exitosos).toBe(1); // el tercero (hoy) alcanza el tope de 3
+
+    const r4 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
     expect(r4.recordatorios_exitosos).toBe(0);
     expect(r4.ya_completados).toBe(1);
+  });
+
+  it('No reenvía al mismo servidor el mismo día aunque el ciclo se vuelva a ejecutar (cambio de hora de envío)', async () => {
+    const servidorId = await crearParticipante(1, 'mismo-dia');
+    const servicioId = await crearServicioAbierto();
+    const opciones = { servicioIds: [servicioId], participanteIds: [servidorId] };
+
+    const r1 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
+    expect(r1.recordatorios_exitosos).toBe(1);
+
+    const r2 = await ejecutarCicloDeRecordatorios({ ...opciones, mailer: new ScriptedMailer([true]) });
+    expect(r2.recordatorios_exitosos).toBe(0);
+    expect(r2.ya_enviado_hoy).toBe(1);
+    expect(r2.ya_completados).toBe(0); // no es por haber alcanzado el tope, sino por el mismo día
   });
 
   it('Simula un fallo de envío: un intento fallido no consume el tope de 3 exitosos', async () => {
@@ -336,6 +390,17 @@ describe('Etapa 5: Flujo de éxito contra base de datos real', () => {
     expect(resumen.participantes_evaluados).toBeGreaterThan(1);
   });
 
+  it('RN-13: GET /api/services/:id/submissions expone reminderWindowOpen según RN-7', async () => {
+    const servicioEnVentana = await crearServicioAbierto();
+    const servicioFueraDeVentana = await crearServicioFueraDeVentanaDeEnvio();
+
+    const resEnVentana = await agent.get(`/api/services/${servicioEnVentana}/submissions`);
+    const resFueraDeVentana = await agent.get(`/api/services/${servicioFueraDeVentana}/submissions`);
+
+    expect(resEnVentana.body.data.service.reminderWindowOpen).toBe(true);
+    expect(resFueraDeVentana.body.data.service.reminderWindowOpen).toBe(false);
+  });
+
   it('GET /api/enviar-recordatorios sin autenticación retorna 401', async () => {
     const res = await request(app).get('/api/enviar-recordatorios');
     expect(res.status).toBe(401);
@@ -379,6 +444,7 @@ describe('Etapa 5: Flujo de éxito contra base de datos real', () => {
       recordatorios_fallidos: 0,
       ya_completados: 0,
       ya_confirmados: 0,
+      ya_enviado_hoy: 0,
     });
   });
 
@@ -403,6 +469,7 @@ describe('Etapa 5: Flujo de éxito contra base de datos real', () => {
       recordatorios_fallidos: 0,
       ya_completados: 0,
       ya_confirmados: 0,
+      ya_enviado_hoy: 0,
     });
   });
 });

@@ -94,7 +94,11 @@ CREATE TABLE IF NOT EXISTS Intento_Envio (
 
 CREATE TABLE IF NOT EXISTS Recordatorios_Lock (
     id INTEGER PRIMARY KEY,
-    bloqueado_desde TIMESTAMP
+    bloqueado_desde TIMESTAMP,
+    -- Ajuste del coordinador (RN-11): hora del día, en UTC-6, en la que debe correr el ciclo.
+    -- Vive en esta fila singleton porque es el mismo concepto de "estado del ciclo de
+    -- recordatorios", no una tabla de configuración aparte para un solo valor.
+    hora_envio_utc6 INTEGER NOT NULL DEFAULT 7
 );
 
 CREATE INDEX IF NOT EXISTS idx_respuesta_participante_servicio ON Respuesta(participante_id, servicio_id);
@@ -154,6 +158,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_intento_envio_unico ON Intento_Envio(parti
 - **Decisión:** A. Es el cambio mínimo que resuelve el problema real sin reabrir una decisión de arquitectura ya aprobada.
 - **Consecuencia:** nueva dependencia (`connect-pg-simple`); la tabla `session` se crea de forma idempotente junto con el resto del esquema (`db/index.ts`), siguiendo el mismo patrón que las demás tablas del proyecto.
 
+### DM-8: Hora de Envío Configurable Mediante Gating Interno, no Reconfigurando el Cron de Vercel
+- **Por qué es mayor:** decide dónde vive el "reloj" que dispara los recordatorios y cambia la experiencia entre producción y desarrollo local; una elección equivocada haría que cambiar la hora (RN-11) no tuviera ningún efecto visible.
+- **Opciones consideradas:**
+  - **A. Gating interno + planificador local (elegida):** el cron de Vercel sigue con un horario fijo en `vercel.json` (no se toca); `ejecutarCicloDeRecordatorios` compara la hora actual (UTC-6) contra `Recordatorios_Lock.hora_envio_utc6` antes de hacer algo, y no envía dos veces el mismo día a un mismo participante (RN-12). Además, `server.ts` (el proceso persistente de desarrollo, `tsx watch`/`node dist/server.js`) arranca un `setInterval` que revisa esa hora cada minuto.
+  - **B. Reconfigurar el cron de Vercel vía su API en cada cambio de hora:** requiere un token de la API de Vercel (credencial externa) y provoca un redeploy por cada cambio — no es instantáneo y agrega una integración externa de alto riesgo para un ajuste que el coordinador puede cambiar varias veces por sesión.
+- **Decisión:** A. Cambiar la hora es instantáneo (una fila de base de datos) y no depende de credenciales de Vercel ni de un redeploy.
+- **Consecuencia:** la función serverless (`api/index.ts`) nunca ejecuta el planificador — no tiene un proceso persistente donde vivir un `setInterval`. En la función serverless, el único disparo automático sigue siendo el cron fijo de `vercel.json` (una vez al día); si la hora configurada no coincide con ese horario fijo, el disparo automático de producción no hace nada ese día (documentado como límite conocido, no como error). Aumentar la frecuencia del cron en producción es un cambio de infraestructura aparte, fuera de este alcance (ver RNF-6).
+
+### Decisión menor: Envío Manual Acotado por Servicio (RN-13)
+Se reutiliza `ejecutarCicloDeRecordatorios` sin tocar su lógica interna; solo se amplía la condición de `remindersController.ts` que hoy limita `servicioIds` del cuerpo a `NODE_ENV=test`, para que también aplique con sesión de coordinador activa. `serviciosService.ts` expone `reminderWindowOpen` (mismo cálculo de RN-7 que ya usa `recordatoriosService`) para que el frontend decida cuándo mostrar el botón sin duplicar esa regla.
+
 ---
 
 ## 4. Diagrama de Secuencia: Flujo de Confirmación de Asistencia
@@ -190,5 +205,6 @@ sequenceDiagram
 | **RF-2, RN-1, RN-3, RN-4** (Servicios) | `servicesController.ts`, `serviciosService.ts`, `models/servicio.model.ts` | `ServicesPage.jsx`, `CreateServicePage.jsx`, `ServiceDetailPage.jsx`, `servicesApi.js` | `etapa2.test.ts` (Validación de fechas, cálculo de estados, ordenamiento) |
 | **RF-3** (Personas y Roles) | `participantsController.ts`, `models/participante.model.ts` | `PeoplePage.jsx` | `etapa3.test.ts` (Alta, unicidad de correo, actualización de rol) |
 | **RF-4, RN-2, RN-9** (Tokens y Confirmación) | `confirmController.ts`, `tokens/index.ts`, `models/respuesta.model.ts` | Vistas HTML públicas de confirmación | `etapa4.test.ts` (Validación de token, endpoints `si`/`no`, ventana cerrada) |
-| **RF-5, RN-5, RN-6, RN-7, RN-8** (Recordatorios) | `remindersController.ts`, `services/recordatoriosService.ts`, `mailer/index.ts` | `ServiceSubmissionsPage.jsx` | `etapa5.test.ts` (Exclusión de roles, tope 3 envíos, generación ICS) |
+| **RF-5, RN-5, RN-6, RN-7, RN-8, RN-13** (Recordatorios) | `remindersController.ts`, `services/recordatoriosService.ts`, `services/serviciosService.ts` (`reminderWindowOpen`), `mailer/index.ts` | `ServiceSubmissionsPage.jsx`, `servicesApi.js` | `etapa5.test.ts` (Exclusión de roles, tope 3 envíos, generación ICS, envío manual acotado por servicio) |
+| **RF-6, RN-11, RN-12** (Ajustes de hora de envío) | `settingsController.ts`, `models/recordatoriosConfig.model.ts`, `services/recordatoriosService.ts`, `server.ts` (planificador local) | `SettingsPage.jsx`, `servicesApi.js` | `etapa5.test.ts` (tope de RN-6 a lo largo de varios días, no reenvío el mismo día) |
 | **RNF-1 a RNF-5** (Fullstack & Build) | `src/app.ts`, `src/index.ts`, `package.json` | `src/App.jsx`, `vite.config.js` | Suite completa de Vitest + `npm run build` |

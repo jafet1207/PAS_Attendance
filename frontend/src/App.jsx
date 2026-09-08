@@ -6,6 +6,7 @@ import CreateServicePage from './pages/CreateServicePage'
 import ServiceDetailPage from './pages/ServiceDetailPage'
 import ServiceSubmissionsPage from './pages/ServiceSubmissionsPage'
 import PeoplePage from './pages/PeoplePage'
+import SettingsPage from './pages/SettingsPage'
 import { useSession } from './hooks/useSession'
 
 export default function App() {
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/services/:serviceId" element={<ServiceDetailPage />} />
         <Route path="/services/:serviceId/submissions" element={<ServiceSubmissionsPage />} />
         <Route path="/people" element={<PeoplePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/services" replace />} />
       </Routes>
     </AppLayout>

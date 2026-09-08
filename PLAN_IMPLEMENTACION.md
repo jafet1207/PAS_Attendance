@@ -26,6 +26,12 @@ El desarrollo del proyecto se estructura en **7 etapas incrementales y verificab
                              │
                              ▼
 [ Etapa 7: Persistencia de Sesión y Despliegue Serverless en Vercel ]
+                             │
+                             ▼
+[ Etapa 8: Ajustes de Hora de Envío y Planificador Local de Recordatorios ]
+                             │
+                             ▼
+[ Etapa 9: Envío Manual de Recordatorios por Servicio ]
 ```
 
 ---
@@ -125,3 +131,35 @@ El desarrollo del proyecto se estructura en **7 etapas incrementales y verificab
   - Regresión: sin cookie, sigue sin acceso (401), igual que antes del cambio.
 - **Criterio de Finalización:** pruebas verdes localmente (incluida la de persistencia de sesión), y un primer despliegue real accesible en Vercel donde el login y el recorrido principal funcionan de punta a punta — verificado manualmente por el usuario, dado que el desarrollo no tiene acceso a la cuenta de Vercel.
 - **Riesgo conocido, sin verificar en este entorno:** no fue posible ejecutar `vercel dev` ni un despliegue real durante el desarrollo (sin cuenta de Vercel conectada en este entorno); la configuración de `vercel.json` puede requerir ajustes en el primer despliegue real.
+
+---
+
+### Etapa 8: Ajustes de Hora de Envío y Planificador Local de Recordatorios (Fullstack)
+- **Objetivo:** que el coordinador configure, desde una pantalla de Ajustes, la hora del día (UTC-6) en la que deben correr los recordatorios (RN-11), y pueda ver el envío en vivo al cambiarla sin depender de reconfigurar el cron de Vercel (DM-8).
+- **Backend:**
+  - `backend/src/db/index.ts`: columna `Recordatorios_Lock.hora_envio_utc6` (idempotente).
+  - `backend/src/models/recordatoriosConfig.model.ts`: leer/actualizar la hora configurada.
+  - `backend/src/models/intentoEnvio.model.ts`: consulta de participantes ya atendidos exitosamente "hoy" (RN-12).
+  - `backend/src/services/recordatoriosService.ts`: gating por hora (`respetarHorarioConfigurado`) y regla de un envío por día.
+  - `backend/src/controllers/settingsController.ts` (`GET`/`PUT /api/settings/recordatorios`, RF-6).
+  - `backend/src/controllers/remindersController.ts`: el disparo automático (Bearer `CRON_SECRET`) respeta la hora configurada; un disparo manual con sesión de coordinador corre de inmediato.
+  - `backend/src/server.ts`: planificador local (revisión cada minuto), solo en el proceso persistente de desarrollo.
+- **Frontend:**
+  - `frontend/src/pages/SettingsPage.jsx`, entrada "Ajustes" en `Sidebar.jsx`, ruta `/settings` en `App.jsx`.
+  - `frontend/src/services/servicesApi.js`: `getReminderSettings`/`updateReminderSettings`.
+- **Pruebas:** `backend/tests/etapa5.test.ts` — la prueba de RN-6 (tope de 3) se rehace simulando días distintos (inserta directamente 2 intentos con fecha pasada, porque llamar al ciclo varias veces en la misma corrida ya no produce varios envíos reales); nueva prueba para RN-12 (no reenvía el mismo día).
+- **Criterio de Finalización:** hora configurable desde la UI, cambio de hora sin redeploy en desarrollo local, tope de RN-6 y regla de RN-12 verificados por la suite (`tsc --noEmit`, `vitest run`, `npm run build` del frontend, todos verdes).
+- **Fuera de alcance (documentado, no implementado):** aumentar la frecuencia del cron de Vercel en producción para que el disparo automático real coincida con cualquier hora configurada (hoy sigue fijo en `vercel.json`, ver DM-8) — requeriría un redeploy y quedó fuera de esta etapa.
+
+---
+
+### Etapa 9: Envío Manual de Recordatorios por Servicio (Fullstack)
+- **Objetivo:** que el coordinador pueda disparar el envío de recordatorios pendientes de un servicio puntual desde Registro de envíos, sin esperar al ciclo automático (RN-13).
+- **Backend:**
+  - `backend/src/services/serviciosService.ts`: campo `reminderWindowOpen` en `ServiceJson`.
+  - `backend/src/controllers/remindersController.ts`: acotar `servicioIds` del cuerpo también cuando hay sesión de coordinador activa, no solo en `NODE_ENV=test`.
+- **Frontend:**
+  - `frontend/src/services/servicesApi.js`: `sendManualReminders(servicioId)`.
+  - `frontend/src/pages/ServiceSubmissionsPage.jsx`: botón de envío manual, visible solo si `reminderWindowOpen` es `true`, con resumen del resultado y recarga de la tabla de envíos.
+- **Pruebas:** `backend/tests/etapa5.test.ts` — caso de `servicioIds` acotado con sesión de coordinador (no solo `NODE_ENV=test`).
+- **Criterio de Finalización:** botón visible solo dentro de la ventana RN-7, envío correcto respetando RN-6/RN-12, suite verde.

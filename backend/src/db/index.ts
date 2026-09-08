@@ -142,6 +142,14 @@ export async function initDb(): Promise<void> {
       ON CONFLICT (id) DO NOTHING;
     `);
 
+    // Ajuste del coordinador (pantalla de Ajustes): hora del día, en UTC-6, en la que debe
+    // correr el ciclo de recordatorios. Vive en la misma fila singleton que el lock porque es
+    // el mismo concepto de "estado del ciclo de recordatorios", no una tabla de configuración
+    // aparte para un solo valor.
+    await client.query(`
+      ALTER TABLE Recordatorios_Lock ADD COLUMN IF NOT EXISTS hora_envio_utc6 INTEGER NOT NULL DEFAULT 7;
+    `);
+
     // Sesión del coordinador (DM-7): esquema oficial de connect-pg-simple. Se crea acá, con el
     // mismo patrón idempotente que el resto de las tablas, en vez de dejar que la librería la
     // cree por su cuenta (createTableIfMissing), para mantener el esquema en un solo lugar.

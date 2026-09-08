@@ -11,6 +11,7 @@ import { ServicesController } from './controllers/servicesController.js';
 import { ParticipantsController } from './controllers/participantsController.js';
 import { ConfirmController } from './controllers/confirmController.js';
 import { RemindersController } from './controllers/remindersController.js';
+import { SettingsController } from './controllers/settingsController.js';
 import { requireAuth, requireReminderAuth } from './middlewares/auth.js';
 
 export function createApp(): express.Express {
@@ -99,6 +100,10 @@ export function createApp(): express.Express {
   // Automatización de recordatorios (Etapa 5, sesión de coordinador o Bearer CRON_SECRET)
   app.get('/api/enviar-recordatorios', requireReminderAuth, RemindersController.triggerReminders);
   app.post('/api/enviar-recordatorios', requireReminderAuth, RemindersController.triggerReminders);
+
+  // Ajustes del coordinador: hora de envío de recordatorios (protegida, solo sesión)
+  app.get('/api/settings/recordatorios', requireAuth, SettingsController.getReminderSettings);
+  app.put('/api/settings/recordatorios', requireAuth, SettingsController.updateReminderSettings);
 
   return app;
 }

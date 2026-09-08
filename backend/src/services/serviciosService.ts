@@ -1,4 +1,5 @@
 import { query } from '../db/index.js';
+import { BUSINESS_CONSTANTS } from '../config/env.js';
 import { Servicio, ServicioModel } from '../models/servicio.model.js';
 
 export const PRIORIDAD_ESTADO: Record<string, number> = {
@@ -71,6 +72,19 @@ export function calcularEstado(
   return pendientes === 0 ? 'Completo' : 'Pendiente';
 }
 
+/**
+ * RN-13: mismo criterio de ventana que usa el ciclo automático (RN-7) para decidir si un
+ * servicio es candidato a recordatorio hoy. Se expone acá, en vez de solo en
+ * `recordatoriosService.ts`, para que el frontend pueda mostrar/ocultar el botón de envío
+ * manual sin duplicar la lista de días de `BUSINESS_CONSTANTS.DIAS_DE_ENVIO_RECORDATORIO`.
+ */
+export function estaEnVentanaDeEnvioRecordatorio(
+  ventanaAbierta: boolean,
+  diasParaCierre: number
+): boolean {
+  return ventanaAbierta && BUSINESS_CONSTANTS.DIAS_DE_ENVIO_RECORDATORIO.includes(diasParaCierre);
+}
+
 export interface ServicioEnriquecido extends Servicio {
   nombre: string;
   pendientes: number;
@@ -93,6 +107,7 @@ export interface ServiceJson {
   confirmationPercentage: number;
   daysUntilClosing: number;
   windowOpen: boolean;
+  reminderWindowOpen: boolean;
   status: 'Pendiente' | 'Vencido' | 'Cerrado' | 'Completo';
 }
 
@@ -223,6 +238,7 @@ export function servicioAJson(s: ServicioEnriquecido): ServiceJson {
     confirmationPercentage,
     daysUntilClosing: s.dias_para_cierre,
     windowOpen: s.ventana_abierta,
+    reminderWindowOpen: estaEnVentanaDeEnvioRecordatorio(s.ventana_abierta, s.dias_para_cierre),
     status: s.estado,
   };
 }

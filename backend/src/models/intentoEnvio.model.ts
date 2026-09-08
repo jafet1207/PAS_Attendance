@@ -40,4 +40,28 @@ export class IntentoEnvioModel {
       params
     );
   }
+
+  /**
+   * Participantes que ya recibieron un recordatorio exitoso de este servicio dentro del rango
+   * de instantes dado (usado para no reenviar el mismo día si la hora configurada cambia a
+   * media jornada, ver `recordatoriosService`).
+   */
+  static async obtenerParticipantesConEnvioExitosoEnRango(
+    servicioId: number,
+    desde: Date,
+    hasta: Date
+  ): Promise<Set<number>> {
+    const res = await query<{ participante_id: number }>(
+      `
+      SELECT DISTINCT participante_id
+      FROM Intento_Envio
+      WHERE servicio_id = $1
+        AND resultado = 'exitoso'
+        AND timestamp >= $2
+        AND timestamp < $3
+    `,
+      [servicioId, desde, hasta]
+    );
+    return new Set(res.rows.map((r) => r.participante_id));
+  }
 }

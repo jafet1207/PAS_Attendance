@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Calendar, ChevronDown, Church, LogOut, Users } from 'lucide-react'
+import { Calendar, ChevronDown, Church, LogOut, Settings, Users } from 'lucide-react'
 import { useOutsideClose } from '../../hooks/useOutsideClose'
 import styles from './Sidebar.module.css'
 
@@ -16,6 +16,12 @@ const NAV_ITEMS = [
     label: 'Servidores',
     icon: Users,
     isActive: (pathname) => pathname.startsWith('/people'),
+  },
+  {
+    to: '/settings',
+    label: 'Ajustes',
+    icon: Settings,
+    isActive: (pathname) => pathname.startsWith('/settings'),
   },
 ]
 

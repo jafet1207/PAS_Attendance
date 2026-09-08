@@ -15,6 +15,7 @@ import {
   construirNombreCompleto,
 } from './serviciosService.js';
 import { IntentoEnvioModel } from '../models/intentoEnvio.model.js';
+import { RecordatoriosConfigModel } from '../models/recordatoriosConfig.model.js';
 import { Mailer, obtenerMailerActivo } from '../mailer/index.js';
 
 // Minutos tras los cuales un lock de Recordatorios_Lock se considera abandonado (p. ej. el
@@ -52,8 +53,14 @@ export interface ResumenRecordatorios {
   recordatorios_fallidos: number;
   ya_completados: number;
   ya_confirmados: number;
+  /** Ya recibió un recordatorio exitoso de este servicio hoy (ver ajuste de hora de envío):
+   * no se le vuelve a enviar aunque el ciclo corra otra vez el mismo día. */
+  ya_enviado_hoy: number;
   /** true solo si esta invocación se omitió por encontrar el ciclo ya en ejecución. */
   omitido_por_ejecucion_concurrente?: boolean;
+  /** true solo si se omitió porque la hora actual (UTC-6) no coincide con la hora de envío
+   * configurada por el coordinador (ver pantalla de Ajustes). */
+  omitido_fuera_de_horario?: boolean;
 }
 
 interface ParticipanteElegible {
@@ -244,6 +251,11 @@ export interface OpcionesCicloRecordatorios {
   /** Solo para pruebas: restringe el barrido a estos servicios/participantes puntuales. */
   servicioIds?: number[];
   participanteIds?: number[];
+  /** Si es true, el ciclo no hace nada a menos que la hora actual (UTC-6) coincida con la
+   * hora de envío configurada por el coordinador (pantalla de Ajustes). Lo usan el disparo
+   * automático (Cron) y el planificador local; un disparo manual del coordinador o una prueba
+   * no lo activan, así que corren de inmediato sin depender del reloj. */
+  respetarHorarioConfigurado?: boolean;
 }
 
 /**
@@ -257,11 +269,27 @@ function diasHastaCierre(fechaCierreStr: string): number {
   return Math.round((cierre.getTime() - hoy.getTime()) / (24 * 3600 * 1000));
 }
 
+/** Hora actual del día, en UTC-6 (0-23), para comparar contra la hora de envío configurada. */
+function horaActualUtc6(): number {
+  const horaUtc = new Date().getUTCHours();
+  return (((horaUtc + BUSINESS_CONSTANTS.ZONA_HORARIA_OFFSET_HORAS) % 24) + 24) % 24;
+}
+
+/** Límites (instantes UTC) del día calendario de hoy en UTC-6, para detectar si ya se envió
+ * un recordatorio exitoso "hoy" sin importar a qué hora corrió el ciclo. */
+function limitesDelDiaUtc6(): { desde: Date; hasta: Date } {
+  const desde = localCRaUtc(formatDateYMD(new Date()), '00:00');
+  const hasta = new Date(desde.getTime() + 24 * 3600 * 1000);
+  return { desde, hasta };
+}
+
 /**
  * RF-5: evalúa los servicios con ventana de confirmación abierta (RN-2) cuyo cierre cae
  * exactamente dentro de la ventana de envío (RN-7: 2 días antes, 1 día antes, o el mismo día
  * del cierre) y despacha un recordatorio a cada participante elegible (RN-5) que aún no
- * respondió y no alcanzó el tope de 3 envíos exitosos (RN-6).
+ * respondió, no alcanzó el tope de 3 envíos exitosos (RN-6) y no recibió ya un recordatorio
+ * exitoso de ese mismo servicio hoy (para que cambiar la hora de envío configurada a media
+ * jornada no le duplique el correo del día).
  *
  * Serializa la ejecución con el lock de `Recordatorios_Lock`: si otra invocación ya está en
  * curso (doble disparo de cron, cron y panel a la vez, reintento de red), esta llamada no
@@ -278,7 +306,15 @@ export async function ejecutarCicloDeRecordatorios(
     recordatorios_fallidos: 0,
     ya_completados: 0,
     ya_confirmados: 0,
+    ya_enviado_hoy: 0,
   };
+
+  if (opciones.respetarHorarioConfigurado) {
+    const horaConfigurada = await RecordatoriosConfigModel.obtenerHoraEnvioUtc6();
+    if (horaActualUtc6() !== horaConfigurada) {
+      return { ...resumenVacio, omitido_fuera_de_horario: true };
+    }
+  }
 
   if (!(await intentarAdquirirLockRecordatorios())) {
     console.warn(
@@ -305,7 +341,10 @@ async function ejecutarCicloInterno(
     recordatorios_fallidos: 0,
     ya_completados: 0,
     ya_confirmados: 0,
+    ya_enviado_hoy: 0,
   };
+
+  const { desde: inicioDeHoy, hasta: finDeHoy } = limitesDelDiaUtc6();
 
   const servicios = (await obtenerServiciosEnriquecidos()).filter(
     (s) =>
@@ -321,6 +360,11 @@ async function ejecutarCicloInterno(
     resumen.servicios_procesados += 1;
     const yaRespondieron = await obtenerParticipantesQueYaRespondieron(servicio.id);
     const conteosIntentos = await obtenerConteosIntentosPorServicio(servicio.id);
+    const enviadosHoy = await IntentoEnvioModel.obtenerParticipantesConEnvioExitosoEnRango(
+      servicio.id,
+      inicioDeHoy,
+      finDeHoy
+    );
     const intentosDelServicio: {
       participanteId: number;
       numeroRecordatorio: number;
@@ -338,6 +382,11 @@ async function ejecutarCicloInterno(
       const conteo = conteosIntentos.get(participante.id) ?? { exitosos: 0, total: 0 };
       if (conteo.exitosos >= BUSINESS_CONSTANTS.MAX_RECORDATORIOS_EXITOSOS) {
         resumen.ya_completados += 1;
+        continue;
+      }
+
+      if (enviadosHoy.has(participante.id)) {
+        resumen.ya_enviado_hoy += 1;
         continue;
       }
 
