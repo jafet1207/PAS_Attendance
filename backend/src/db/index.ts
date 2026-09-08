@@ -186,6 +186,78 @@ export async function initDb(): Promise<void> {
       );
     }
 
+    // RN-19: catálogo de puestos (Etapa 10). Área es fija y sembrada una sola vez (mismo patrón
+    // que Grupo); Puesto no tiene una restricción UNIQUE sobre nombre en el esquema (RF-7 permite
+    // editar nombres libremente desde el CRUD), así que la siembra idempotente se hace revisando
+    // qué nombres ya existen en vez de depender de ON CONFLICT.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS Area (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT UNIQUE NOT NULL
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS Puesto (
+        id SERIAL PRIMARY KEY,
+        nombre TEXT NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('Principal', 'Secundario')),
+        area_id INTEGER REFERENCES Area(id),
+        activo BOOLEAN NOT NULL DEFAULT true,
+        CHECK ((tipo = 'Principal' AND area_id IS NOT NULL) OR (tipo = 'Secundario' AND area_id IS NULL))
+      );
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_puesto_area ON Puesto(area_id);
+    `);
+
+    const areaIdPorNombre = new Map<string, number>(
+      (await client.query<{ id: number; nombre: string }>('SELECT id, nombre FROM Area')).rows.map(
+        (a) => [a.nombre, a.id]
+      )
+    );
+    for (const { area } of BUSINESS_CONSTANTS.AREAS_Y_PUESTOS_BASE) {
+      if (!areaIdPorNombre.has(area)) {
+        const res = await client.query<{ id: number }>(
+          'INSERT INTO Area (nombre) VALUES ($1) ON CONFLICT (nombre) DO NOTHING RETURNING id',
+          [area]
+        );
+        if (res.rows[0]) {
+          areaIdPorNombre.set(area, res.rows[0].id);
+        } else {
+          // El INSERT chocó con una fila que no estaba en la lectura inicial (p. ej. dos
+          // initDb() corriendo a la vez). Sin este fallback, esta Área quedaría fuera del mapa
+          // y sus Puestos se saltarían en silencio más abajo.
+          const existente = await client.query<{ id: number }>('SELECT id FROM Area WHERE nombre = $1', [area]);
+          if (existente.rows[0]) areaIdPorNombre.set(area, existente.rows[0].id);
+        }
+      }
+    }
+
+    const nombresDePuestoExistentes = new Set(
+      (await client.query<{ nombre: string }>('SELECT nombre FROM Puesto')).rows.map((p) => p.nombre)
+    );
+    for (const { area, puestos } of BUSINESS_CONSTANTS.AREAS_Y_PUESTOS_BASE) {
+      const areaId = areaIdPorNombre.get(area);
+      for (const nombre of puestos) {
+        if (areaId && !nombresDePuestoExistentes.has(nombre)) {
+          await client.query(
+            "INSERT INTO Puesto (nombre, tipo, area_id) VALUES ($1, 'Principal', $2)",
+            [nombre, areaId]
+          );
+        }
+      }
+    }
+    for (const nombre of BUSINESS_CONSTANTS.PUESTOS_SECUNDARIOS_BASE) {
+      if (!nombresDePuestoExistentes.has(nombre)) {
+        await client.query(
+          "INSERT INTO Puesto (nombre, tipo, area_id) VALUES ($1, 'Secundario', NULL)",
+          [nombre]
+        );
+      }
+    }
+
     await client.query('COMMIT');
     console.log('[DB] Base de datos PostgreSQL inicializada exitosamente.');
   } catch (error) {

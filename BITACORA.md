@@ -235,6 +235,16 @@ en vez de dejar que `Number(...)` produzca `NaN` en silencio; `ServicioModel.con
 que intenten congelar el mismo servicio recién cerrado a la vez (no se movió la escritura fuera del
 GET: hacerlo habría cambiado cuándo se congela el conteo, un riesgo mayor que el que resolvía).
 
+**Revisión de entrega — Etapa 10 (Catálogo de Puestos):** dictamen "Listo con seguimiento".
+Encontrado y corregido (P2): `DISENO.md` y `PLAN_IMPLEMENTACION.md` seguían refiriendo un
+`puestosApi.js` que nunca se creó (las funciones quedaron en `servicesApi.js`, avisado en el
+cierre de la etapa pero no reflejado en los documentos), y `ESTADO_IMPLEMENTACION.md` no tenía
+fila para la Etapa 10 pese a estar completa. También se corrigieron los dos hallazgos P3: la
+siembra de Áreas en `db/index.ts` ahora recupera el `id` con un `SELECT` de respaldo si el
+`INSERT ... RETURNING` no devuelve fila (dos `initDb()` corriendo a la vez no dejarían Puestos
+huérfanos en silencio), y se agregaron pruebas para cambiar el `tipo` de un puesto ya existente
+(Principal↔Secundario), que antes solo se probaba al crear.
+
 ---
 
 ## Qué se revisó siempre / qué se delegó sin revisión

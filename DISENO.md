@@ -105,6 +105,39 @@ CREATE INDEX IF NOT EXISTS idx_respuesta_participante_servicio ON Respuesta(part
 CREATE INDEX IF NOT EXISTS idx_intentos_servicio ON Intento_Envio(servicio_id);
 CREATE INDEX IF NOT EXISTS idx_intentos_participante_servicio ON Intento_Envio(participante_id, servicio_id, resultado);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_intento_envio_unico ON Intento_Envio(participante_id, servicio_id, numero_recordatorio);
+
+-- RN-19: catálogo fijo de Áreas, sembrado una sola vez (igual que Grupo).
+CREATE TABLE IF NOT EXISTS Area (
+    id SERIAL PRIMARY KEY,
+    nombre TEXT UNIQUE NOT NULL
+);
+
+-- RN-17: catálogo de puestos administrado por el coordinador (CRUD), con baja lógica.
+-- area_id es obligatorio cuando tipo = 'Principal' (el puesto pertenece a una Área) y NULL
+-- cuando tipo = 'Secundario' (Café, Apertura Puertas, Apoyo Logística: sin Área).
+CREATE TABLE IF NOT EXISTS Puesto (
+    id SERIAL PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    tipo TEXT NOT NULL CHECK (tipo IN ('Principal', 'Secundario')),
+    area_id INTEGER REFERENCES Area(id),
+    activo BOOLEAN NOT NULL DEFAULT true,
+    CHECK ((tipo = 'Principal' AND area_id IS NOT NULL) OR (tipo = 'Secundario' AND area_id IS NULL))
+);
+
+-- RN-15/RN-16: asignación de un puesto a un participante para un servicio puntual. Varias filas
+-- por participante+servicio son válidas (un Principal + N Secundario); el tope de "a lo sumo un
+-- Principal" (RN-16) se valida en la aplicación al reemplazar el conjunto completo (RF-7.6), no
+-- acá — ver Decisión menor más abajo.
+CREATE TABLE IF NOT EXISTS Asignacion_Puesto (
+    id SERIAL PRIMARY KEY,
+    participante_id INTEGER NOT NULL REFERENCES Participante(id),
+    servicio_id INTEGER NOT NULL REFERENCES Servicio(id),
+    puesto_id INTEGER NOT NULL REFERENCES Puesto(id),
+    UNIQUE (participante_id, servicio_id, puesto_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asignacion_servicio ON Asignacion_Puesto(servicio_id);
+CREATE INDEX IF NOT EXISTS idx_puesto_area ON Puesto(area_id);
 ```
 
 ---
@@ -169,6 +202,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_intento_envio_unico ON Intento_Envio(parti
 ### Decisión menor: Envío Manual Acotado por Servicio (RN-13)
 Se reutiliza `ejecutarCicloDeRecordatorios` sin tocar su lógica interna; solo se amplía la condición de `remindersController.ts` que hoy limita `servicioIds` del cuerpo a `NODE_ENV=test`, para que también aplique con sesión de coordinador activa. `serviciosService.ts` expone `reminderWindowOpen` (mismo cálculo de RN-7 que ya usa `recordatoriosService`) para que el frontend decida cuándo mostrar el botón sin duplicar esa regla.
 
+### Decisión menor: Tope de "un Principal por servicio" (RN-16) Validado en Aplicación, no en el Esquema
+`Puesto.tipo` vive en una tabla separada de `Asignacion_Puesto`, así que expresar "a lo sumo un
+`Principal` por participante+servicio" como una restricción nativa de Postgres exigiría denormalizar
+`tipo` dentro de `Asignacion_Puesto` (copiarlo al asignar) para poder declarar un índice único parcial
+(`... WHERE tipo = 'Principal'`), o un trigger. Se optó por **validar en la aplicación**
+(`RF-7.6`, `PUT /api/services/:id/asignaciones/:participanteId`): ese endpoint reemplaza el
+conjunto completo de asignaciones del participante para ese servicio en una sola escritura, así
+que no hay una carrera real de "agregar de a uno" que una restricción de esquema tuviera que
+prevenir (coordinador único, sin escritura concurrente sobre el mismo participante+servicio). Es
+el mismo criterio de costo/beneficio que ya se aplicó en otras partes del sistema: una restricción
+de base de datos se reserva para riesgos reales de duplicar efectos (ver DM-4), no como regla por
+defecto. Reversible más adelante si el patrón de uso cambia.
+
+### Decisión menor: Funciones de Puestos en `servicesApi.js`, sin Crear `puestosApi.js` (Etapa 10)
+El plan original (`PLAN_IMPLEMENTACION.md`) proponía un archivo de cliente HTTP separado,
+`puestosApi.js`. Al implementar se detectó que el proyecto ya usa una única convención real:
+`frontend/src/services/servicesApi.js` concentra toda la API del cliente pese a su nombre (grupos,
+participantes, ajustes de recordatorios, y ahora puestos), sin un archivo por módulo de negocio.
+Se siguió esa convención existente en vez de la anotada en el plan, para no introducir un patrón
+de organización nuevo por una sola pantalla. `getPuestos`, `createPuesto`, `updatePuesto` y
+`setPuestoStatus` viven en `servicesApi.js`.
+
 ---
 
 ## 4. Diagrama de Secuencia: Flujo de Confirmación de Asistencia
@@ -207,4 +262,5 @@ sequenceDiagram
 | **RF-4, RN-2, RN-9** (Tokens y Confirmación) | `confirmController.ts`, `tokens/index.ts`, `models/respuesta.model.ts` | Vistas HTML públicas de confirmación | `etapa4.test.ts` (Validación de token, endpoints `si`/`no`, ventana cerrada) |
 | **RF-5, RN-5, RN-6, RN-7, RN-8, RN-13** (Recordatorios) | `remindersController.ts`, `services/recordatoriosService.ts`, `services/serviciosService.ts` (`reminderWindowOpen`), `mailer/index.ts` | `ServiceSubmissionsPage.jsx`, `servicesApi.js` | `etapa5.test.ts` (Exclusión de roles, tope 3 envíos, generación ICS, envío manual acotado por servicio) |
 | **RF-6, RN-11, RN-12** (Ajustes de hora de envío) | `settingsController.ts`, `models/recordatoriosConfig.model.ts`, `services/recordatoriosService.ts`, `server.ts` (planificador local) | `SettingsPage.jsx`, `servicesApi.js` | `etapa5.test.ts` (tope de RN-6 a lo largo de varios días, no reenvío el mismo día) |
+| **RF-7, RN-14, RN-15, RN-16, RN-17, RN-18, RN-19** (Puestos por Servicio) | `puestosController.ts`, `services/puestosService.ts`, `models/area.model.ts`, `models/puesto.model.ts`, `models/asignacionPuesto.model.ts` | `RolesPage.jsx`, `servicesApi.js` (funciones de puestos; no se creó un `puestosApi.js` aparte, ver Decisión menor de Etapa 10) | `etapa10.test.ts` (siembra RN-19, validación RN-17, baja lógica; ventana RN-14 y elegibilidad RN-15 se agregan en la Etapa 11) |
 | **RNF-1 a RNF-5** (Fullstack & Build) | `src/app.ts`, `src/index.ts`, `package.json` | `src/App.jsx`, `vite.config.js` | Suite completa de Vitest + `npm run build` |

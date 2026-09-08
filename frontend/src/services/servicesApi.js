@@ -89,3 +89,32 @@ export async function updateReminderSettings(horaEnvioUtc6) {
   })
   return body.data
 }
+
+export async function getPuestos() {
+  const body = await apiRequest('/api/puestos')
+  return body.data
+}
+
+export async function createPuesto(data) {
+  const body = await apiRequest('/api/puestos', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+  return body.data
+}
+
+export async function updatePuesto(id, data) {
+  const body = await apiRequest(`/api/puestos/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+  return body.data
+}
+
+export async function setPuestoStatus(id, activo) {
+  const body = await apiRequest(`/api/puestos/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ activo }),
+  })
+  return body.data
+}

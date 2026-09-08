@@ -41,6 +41,22 @@ El sistema debe operar de forma desacoplada con un **Frontend en React 19 + Vite
 - **RN-11 (Hora de Envío Configurable):** El coordinador configura, desde la pantalla de Ajustes, la hora del día (0 a 23, en horario de Costa Rica UTC-6) en la que debe correr el ciclo de recordatorios. Por defecto es las 7:00 AM. El ciclo, al ser invocado por el disparo automático, no hace nada si la hora actual (UTC-6) no coincide exactamente con la hora configurada.
 - **RN-12 (Un Recordatorio Exitoso por Servidor por Día):** Un participante no recibe más de un recordatorio exitoso del mismo servicio en el mismo día calendario (UTC-6), sin importar cuántas veces se ejecute el ciclo ese día — p. ej. si el coordinador cambia la hora de envío a media jornada para probar el envío en vivo. Esta regla es independiente del tope total de RN-6 (3 recordatorios exitosos, a lo largo de todos los días).
 - **RN-13 (Envío Manual de Recordatorios por Servicio):** El coordinador puede disparar manualmente el envío de recordatorios pendientes de un servicio específico desde la pantalla de Registro de envíos. Esta acción solo está disponible cuando ese servicio está dentro de la ventana de envío de RN-7 (2, 1 o 0 días antes del cierre); fuera de esa ventana, la acción no se ofrece. El envío manual reutiliza el mismo ciclo que el automático, por lo que sigue respetando el tope de RN-6 y la regla de un envío por día de RN-12.
+- **RN-14 (Ventana de Asignación de Puestos):** Los puestos de un servicio solo pueden asignarse una vez que su ventana de confirmación cerró (`hoy > fecha_cierre_confirmacion`) y mientras el servicio todavía no haya ocurrido (`hoy <= fecha_servicio`). Fuera de esa ventana, el servicio no aparece en la pantalla de Roles.
+- **RN-15 (Elegibilidad para Asignación de Puestos):** Son elegibles para recibir una asignación de puesto en un servicio: (a) los participantes que confirmaron "Sí" para ese servicio, y (b) los participantes de los grupos `Líder` y `Director`, que no reciben correo de confirmación (no participan del flujo de RF-4) pero sí deben poder agregarse manualmente al listado de puestos de un servicio.
+- **RN-16 (Un Puesto Principal por Servicio, Secundarios sin Límite):** Un participante puede tener a lo sumo **un** puesto de tipo `Principal` por servicio (uno de los definidos dentro de un Área, ver RN-19), más cualquier cantidad de puestos de tipo `Secundario`. Un mismo puesto —incluido cualquier "Coordinador de área"— puede asignarse a varios participantes a la vez en el mismo servicio; no hay tope de ocupación por puesto, el tope de RN-16 es sobre cuántos puestos `Principal` puede acumular un mismo participante.
+- **RN-17 (Catálogo de Puestos con Baja Lógica):** El coordinador administra el catálogo de puestos (nombre, tipo `Principal`/`Secundario` y, si es `Principal`, el Área a la que pertenece) desde la pantalla de Roles. Un puesto se desactiva (`activo = false`) en vez de eliminarse físicamente, para no perder el registro de asignaciones pasadas que lo referencian. Las Áreas (RN-19) son un catálogo fijo, sembrado una sola vez; no tienen pantalla de administración propia en esta primera versión.
+- **RN-18 (Uso Interno de la Asignación de Puestos):** La asignación de puestos es de uso interno del coordinador; no se incluye en ningún correo de convocatoria, recordatorio o confirmación enviado a los participantes.
+- **RN-19 (Catálogo Inicial de Áreas y Puestos):** El sistema se siembra con 5 Áreas y sus puestos de tipo `Principal` (uno de ellos, "Coordinador de área (<Área>)", presente en todas las Áreas salvo `Kids`), más 3 puestos de tipo `Secundario` sin Área:
+
+  | Área | Puestos `Principal` |
+  |---|---|
+  | Parqueo | Coordinador de área (Parqueo); Parqueo |
+  | Auditorio | Coordinador de área (Auditorio); Sala KZN Babies; Entrada al auditorio (Puertas de madera) - Lado Kids; Entrada al auditorio (Puertas de madera) - Lado Cafetería; Auditorio - Adentro |
+  | Lobby y Pasillos | Coordinador de área (Lobby y Pasillos); Puertas principales - Frente; Entrada al edificio (Puertas de vidrio) - Lado Kids; Entrada al edificio (Puertas de vidrio) - Lado Cafetería; Cafetería; Cafetería - Info PAS; Click - Lobby principal; Click - Lado Kids; Click - Lado Cafetería |
+  | Quiero orar por vos | Coordinador de área (Quiero orar por vos); Quiero orar por vos |
+  | Kids | Kids |
+
+  Puestos `Secundario` (sin Área): Café; Apertura Puertas; Apoyo Logística.
 
 ---
 
@@ -77,6 +93,14 @@ El sistema debe operar de forma desacoplada con un **Frontend en React 19 + Vite
 ### RF-6: Ajustes de Recordatorios
 - `RF-6.1`: `GET /api/settings/recordatorios` - Obtener la hora de envío configurada (RN-11). Requiere sesión de coordinador.
 - `RF-6.2`: `PUT /api/settings/recordatorios` - Actualizar la hora de envío (entero 0-23); rechaza valores fuera de rango (`400`). Requiere sesión de coordinador.
+
+### RF-7: Catálogo y Asignación de Puestos por Servicio
+- `RF-7.1`: `GET /api/puestos` - Listar el catálogo de puestos (incluye inactivos y su Área, cuando aplica), para que el historial de asignaciones pasadas siga mostrando el nombre correcto.
+- `RF-7.2`: `POST /api/puestos` - Crear un puesto (`nombre`, `tipo`, `area_id` si `tipo = 'Principal'`).
+- `RF-7.3`: `PATCH /api/puestos/:id` - Editar `nombre`/`tipo`/`area_id` de un puesto.
+- `RF-7.4`: `PATCH /api/puestos/:id/status` - Activar/desactivar un puesto (RN-17).
+- `RF-7.5`: `GET /api/services/:id/asignaciones` - Listar los participantes elegibles (RN-15) de ese servicio con sus asignaciones de puesto actuales.
+- `RF-7.6`: `PUT /api/services/:id/asignaciones/:participanteId` - Reemplazar el conjunto de puestos asignados a un participante para ese servicio (un `Principal` opcional + N `Secundario`), validando RN-16.
 
 ---
 

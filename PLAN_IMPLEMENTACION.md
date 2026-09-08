@@ -1,6 +1,6 @@
 # Plan de Implementación por Etapas Verticales
 
-El desarrollo del proyecto se estructura en **7 etapas incrementales y verificables** siguiendo la metodología de **rebanadas verticales (Vertical Slices)** de la skill `/desarrollar-por-etapas`. Cada etapa integra su componente en el Frontend, su API/lógica en el Backend y sus pruebas automatizadas.
+El desarrollo del proyecto se estructura en etapas incrementales y verificables siguiendo la metodología de **rebanadas verticales (Vertical Slices)** de la skill `/desarrollar-por-etapas`. Cada etapa integra su componente en el Frontend, su API/lógica en el Backend y sus pruebas automatizadas.
 
 ---
 
@@ -32,6 +32,12 @@ El desarrollo del proyecto se estructura en **7 etapas incrementales y verificab
                              │
                              ▼
 [ Etapa 9: Envío Manual de Recordatorios por Servicio ]
+                             │
+                             ▼
+[ Etapa 10: Catálogo de Puestos (Áreas y CRUD de Puestos) ]
+                             │
+                             ▼
+[ Etapa 11: Pantalla "Roles" — Asignación de Puestos por Servicio ]
 ```
 
 ---
@@ -163,3 +169,35 @@ El desarrollo del proyecto se estructura en **7 etapas incrementales y verificab
   - `frontend/src/pages/ServiceSubmissionsPage.jsx`: botón de envío manual, visible solo si `reminderWindowOpen` es `true`, con resumen del resultado y recarga de la tabla de envíos.
 - **Pruebas:** `backend/tests/etapa5.test.ts` — caso de `servicioIds` acotado con sesión de coordinador (no solo `NODE_ENV=test`).
 - **Criterio de Finalización:** botón visible solo dentro de la ventana RN-7, envío correcto respetando RN-6/RN-12, suite verde.
+
+---
+
+### Etapa 10: Catálogo de Puestos — Áreas Semilla y CRUD de Puestos (Fullstack)
+- **Objetivo:** que exista el catálogo de puestos (RN-19) con el que se asignarán roles en la Etapa 11, y que el coordinador pueda mantenerlo (crear, editar, desactivar) desde la pantalla "Roles" (RN-17).
+- **Backend:**
+  - `backend/src/db/index.ts`: tablas `Area` y `Puesto` (idempotente, mismo patrón que el resto del esquema), con el `INSERT ... ON CONFLICT DO NOTHING` que siembra las 5 Áreas y sus puestos iniciales de RN-19.
+  - `backend/src/models/area.model.ts`: `getAll()`.
+  - `backend/src/models/puesto.model.ts`: `getAll()` (incluye inactivos), `create`, `update`, `setActivo`.
+  - `backend/src/services/puestosService.ts`: valida el `CHECK` de RN-17 a nivel de aplicación antes de escribir (`tipo='Principal'` requiere `area_id`; `tipo='Secundario'` lo prohíbe), con el mismo mensaje de error para ambos lados.
+  - `backend/src/controllers/puestosController.ts`: `GET`/`POST /api/puestos`, `PATCH /api/puestos/:id`, `PATCH /api/puestos/:id/status` (RF-7.1 a RF-7.4). Protegidos con `requireAuth`, igual que `/api/participants`.
+- **Frontend:**
+  - `frontend/src/pages/RolesPage.jsx` (nueva), entrada "Roles" en `Sidebar.jsx`, ruta `/roles` en `App.jsx`. En esta etapa solo contiene la sección de catálogo (tabla de puestos agrupados por Área + botón "Agregar puesto"); la lista de servicios elegibles se agrega en la Etapa 11.
+  - `frontend/src/services/servicesApi.js`: `getPuestos`, `createPuesto`, `updatePuesto`, `setPuestoStatus` (agregadas al archivo existente, no en un `puestosApi.js` aparte — ver Decisión menor en `DISENO.md`).
+- **Pruebas:** `backend/tests/etapa10.test.ts` (nuevo) — siembra idempotente de Áreas/Puestos, `CHECK` de RN-17 (rechaza `Principal` sin área y `Secundario` con área), baja lógica (`activo=false` no borra la fila), autenticación requerida.
+- **Criterio de Finalización:** catálogo sembrado y visible en "Roles"; alta, edición y baja lógica de puestos funcionando desde la UI; `tsc --noEmit`, `vitest run`, `npm run build` del frontend verdes. **Cumplido** — ver `ESTADO_IMPLEMENTACION.md`.
+
+---
+
+### Etapa 11: Pantalla "Roles" — Asignación de Puestos por Servicio (Fullstack)
+- **Objetivo:** que el coordinador asigne, por servicio, un puesto Principal (a lo sumo uno) y cualquier cantidad de Secundarios a cada participante elegible (RN-14, RN-15, RN-16), una vez cerrada la ventana de confirmación y mientras el servicio no haya ocurrido.
+- **Backend:**
+  - `backend/src/db/index.ts`: tabla `Asignacion_Puesto` (idempotente).
+  - `backend/src/models/asignacionPuesto.model.ts`: `getPorServicio(servicioId)`, `reemplazarParaParticipante(participanteId, servicioId, puestoIds)` (borra e inserta dentro de una transacción, para que RF-7.6 sea una sustitución atómica del conjunto).
+  - `backend/src/services/puestosService.ts`: `obtenerElegibles(servicioId)` (RN-15: respuesta `Sí`, o grupo `Líder`/`Director`); valida RN-16 (a lo sumo un `Principal` en el conjunto recibido) antes de reemplazar.
+  - `backend/src/controllers/asignacionesController.ts`: `GET /api/services/:id/asignaciones`, `PUT /api/services/:id/asignaciones/:participanteId` (RF-7.5, RF-7.6).
+- **Frontend:**
+  - `frontend/src/pages/RolesPage.jsx`: agrega la lista de servicios dentro de la ventana de RN-14 (`!windowOpen` y la fecha calendario de `service.date` todavía no pasó — misma comparación por día, sin hora, que ya usa el resto del sistema para RN-2/RN-7 — calculado sobre los mismos campos que ya expone `GET /api/services`, sin endpoint nuevo para el listado). Al entrar a un servicio, tabla de participantes elegibles con un `ModernSelect` (Principal) y un multi-select (Secundarios) por fila.
+  - `frontend/src/pages/ServiceDetailPage.jsx`: badge con el puesto Principal asignado (si existe) junto a cada participante confirmado, reutilizando `GET /api/services/:id/asignaciones`.
+  - `frontend/src/services/servicesApi.js`: `getAsignaciones(servicioId)`, `guardarAsignacion(servicioId, participanteId, puestoIds)`.
+- **Pruebas:** `backend/tests/etapa10.test.ts` — ventana de RN-14 (antes del cierre y después de la fecha del servicio, el servicio no aparece), elegibilidad de RN-15 (excluye a quien respondió "No" o no respondió; incluye a Líder/Director sin respuesta), tope de RN-16 (rechaza un segundo `Principal` en el mismo `PUT`), reemplazo atómico (RF-7.6 dos veces seguidas no acumula filas viejas).
+- **Criterio de Finalización:** flujo completo verificado manualmente (crear puesto → cerrar ventana de un servicio de prueba → asignar Principal/Secundarios → verse en Gestionar Servicio); suite verde (`tsc --noEmit`, `vitest run`, `npm run build`).

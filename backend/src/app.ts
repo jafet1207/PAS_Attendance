@@ -12,6 +12,7 @@ import { ParticipantsController } from './controllers/participantsController.js'
 import { ConfirmController } from './controllers/confirmController.js';
 import { RemindersController } from './controllers/remindersController.js';
 import { SettingsController } from './controllers/settingsController.js';
+import { PuestosController } from './controllers/puestosController.js';
 import { requireAuth, requireReminderAuth } from './middlewares/auth.js';
 
 export function createApp(): express.Express {
@@ -104,6 +105,12 @@ export function createApp(): express.Express {
   // Ajustes del coordinador: hora de envío de recordatorios (protegida, solo sesión)
   app.get('/api/settings/recordatorios', requireAuth, SettingsController.getReminderSettings);
   app.put('/api/settings/recordatorios', requireAuth, SettingsController.updateReminderSettings);
+
+  // Catálogo de puestos por servicio (Etapa 10, RF-7.1 a RF-7.4, protegidas)
+  app.get('/api/puestos', requireAuth, PuestosController.getPuestos);
+  app.post('/api/puestos', requireAuth, PuestosController.createPuesto);
+  app.patch('/api/puestos/:id', requireAuth, PuestosController.updatePuesto);
+  app.patch('/api/puestos/:id/status', requireAuth, PuestosController.setPuestoStatus);
 
   return app;
 }
