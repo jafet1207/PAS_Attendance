@@ -46,17 +46,19 @@ export function formatDateYMD(d: Date | string): string {
 }
 
 /**
- * Fecha de "hoy" (YYYY-MM-DD) en hora de Costa Rica, calculada por aritmética sobre el
- * instante UTC (igual que `recordatoriosService.ts`) en vez de con los getters locales de
- * `Date`. Estos últimos dependen del TZ del proceso: en producción (Vercel) corre en UTC, así
- * que de 6pm a medianoche hora CR ya reportarían el día siguiente, adelantando un día el cierre
- * de ventanas de confirmación/asignación de puestos.
+ * "Hoy" en Costa Rica (UTC-6), calculado por aritmética sobre el instante UTC en vez de los
+ * getters locales de Date (getFullYear/getMonth/getDate), que dependen del TZ del proceso. En
+ * producción (Vercel) el proceso corre en UTC, así que entre las 6pm y medianoche hora de Costa
+ * Rica esos getters ya devuelven el día siguiente, adelantando el cierre de la ventana de
+ * confirmación (RN-2) y la disponibilidad de asignación de puestos (RN-14).
  */
-function hoyEnCostaRica(): string {
-  const enCR = new Date(Date.now() + BUSINESS_CONSTANTS.ZONA_HORARIA_OFFSET_HORAS * 3600 * 1000);
-  const year = enCR.getUTCFullYear();
-  const month = String(enCR.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(enCR.getUTCDate()).padStart(2, '0');
+export function hoyEnCostaRica(): string {
+  const instanteCR = new Date(
+    Date.now() + BUSINESS_CONSTANTS.ZONA_HORARIA_OFFSET_HORAS * 3600 * 1000
+  );
+  const year = instanteCR.getUTCFullYear();
+  const month = String(instanteCR.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(instanteCR.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 

@@ -13,6 +13,7 @@ import {
   obtenerServiciosEnriquecidos,
   formatDateYMD,
   construirNombreCompleto,
+  hoyEnCostaRica,
 } from './serviciosService.js';
 import { IntentoEnvioModel } from '../models/intentoEnvio.model.js';
 import { RecordatoriosConfigModel } from '../models/recordatoriosConfig.model.js';
@@ -264,7 +265,7 @@ export interface OpcionesCicloRecordatorios {
  * un mismo día calendario siempre dé la misma diferencia entera de días.
  */
 function diasHastaCierre(fechaCierreStr: string): number {
-  const hoy = new Date(`${formatDateYMD(new Date())}T00:00:00`);
+  const hoy = new Date(`${hoyEnCostaRica()}T00:00:00`);
   const cierre = new Date(`${fechaCierreStr}T00:00:00`);
   return Math.round((cierre.getTime() - hoy.getTime()) / (24 * 3600 * 1000));
 }
@@ -278,7 +279,7 @@ function horaActualUtc6(): number {
 /** Límites (instantes UTC) del día calendario de hoy en UTC-6, para detectar si ya se envió
  * un recordatorio exitoso "hoy" sin importar a qué hora corrió el ciclo. */
 function limitesDelDiaUtc6(): { desde: Date; hasta: Date } {
-  const desde = localCRaUtc(formatDateYMD(new Date()), '00:00');
+  const desde = localCRaUtc(hoyEnCostaRica(), '00:00');
   const hasta = new Date(desde.getTime() + 24 * 3600 * 1000);
   return { desde, hasta };
 }

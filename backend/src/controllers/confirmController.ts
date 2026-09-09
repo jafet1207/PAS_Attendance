@@ -6,7 +6,12 @@ import { ServicioModel } from '../models/servicio.model.js';
 import { RespuestaModel } from '../models/respuesta.model.js';
 import { GrupoModel } from '../models/grupo.model.js';
 import { BUSINESS_CONSTANTS } from '../config/env.js';
-import { formatDateYMD, formatearNombreServicio, construirNombreCompleto } from '../services/serviciosService.js';
+import {
+  formatDateYMD,
+  formatearNombreServicio,
+  construirNombreCompleto,
+  hoyEnCostaRica,
+} from '../services/serviciosService.js';
 
 // Estas páginas son HTML crudo (sin JSX) y públicas, sin autenticación. Cualquier valor que
 // provenga de un campo de texto libre (ej. el nombre del participante, capturado en la Etapa 3
@@ -61,7 +66,7 @@ export function renderEmailHtml(titulo: string, contenidoInterior: string): stri
 // que usa "<" estricto) porque responde a una pregunta diferente: "¿puedo confirmar hoy?"
 // contra "¿cómo se ve el badge del servicio?".
 export function ventanaDeConfirmacionAbierta(fechaCierreStr: string): boolean {
-  const hoyStr = formatDateYMD(new Date());
+  const hoyStr = hoyEnCostaRica();
   return hoyStr <= fechaCierreStr;
 }
 

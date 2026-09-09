@@ -5,14 +5,18 @@ import { createApp } from '../src/app.js';
 import { config } from '../src/config/env.js';
 import { generarIcs, ejecutarCicloDeRecordatorios } from '../src/services/recordatoriosService.js';
 import { opcionesDesdeCuerpo, SolicitudInvalidaError } from '../src/controllers/remindersController.js';
-import { estaEnVentanaDeEnvioRecordatorio } from '../src/services/serviciosService.js';
+import { estaEnVentanaDeEnvioRecordatorio, hoyEnCostaRica } from '../src/services/serviciosService.js';
 import { ScriptedMailer, MockMailer, GmailMailer, Mailer } from '../src/mailer/index.js';
 import { RespuestaModel } from '../src/models/respuesta.model.js';
 import { query } from '../src/db/index.js';
 
+// Ancla el desplazamiento al mismo "hoy" (Costa Rica, UTC-6) que usa la producción
+// (`hoyEnCostaRica`), en vez de al día calendario UTC: entre las 6pm y medianoche hora de
+// Costa Rica esos dos días calendario difieren, y un `addDays` en UTC generaría fixtures
+// desalineados con la ventana real que el código bajo prueba calcula.
 function addDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
+  const d = new Date(`${hoyEnCostaRica()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
