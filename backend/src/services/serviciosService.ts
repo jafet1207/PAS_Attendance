@@ -45,6 +45,21 @@ export function formatDateYMD(d: Date | string): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Fecha de "hoy" (YYYY-MM-DD) en hora de Costa Rica, calculada por aritmética sobre el
+ * instante UTC (igual que `recordatoriosService.ts`) en vez de con los getters locales de
+ * `Date`. Estos últimos dependen del TZ del proceso: en producción (Vercel) corre en UTC, así
+ * que de 6pm a medianoche hora CR ya reportarían el día siguiente, adelantando un día el cierre
+ * de ventanas de confirmación/asignación de puestos.
+ */
+function hoyEnCostaRica(): string {
+  const enCR = new Date(Date.now() + BUSINESS_CONSTANTS.ZONA_HORARIA_OFFSET_HORAS * 3600 * 1000);
+  const year = enCR.getUTCFullYear();
+  const month = String(enCR.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(enCR.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function formatearNombreServicio(fechaServicio: Date | string, tipo: string): string {
   const d = parseDate(fechaServicio);
   const diaSemana = DIAS_SEMANA[d.getDay()];
@@ -173,8 +188,7 @@ export function compararServiciosPorPrioridad(
 
 export async function obtenerServiciosEnriquecidos(): Promise<ServicioEnriquecido[]> {
   const servicios = await ServicioModel.getAll();
-  const hoy = new Date();
-  const hoyStr = formatDateYMD(hoy);
+  const hoyStr = hoyEnCostaRica();
   const hoyDate = parseDate(hoyStr);
 
   const totalParticipantes = await contarTodosLosParticipantes();
