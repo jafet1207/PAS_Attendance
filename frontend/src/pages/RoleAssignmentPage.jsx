@@ -18,6 +18,23 @@ function seleccionInicial(participant) {
   return { principalId: principal ? String(principal.id) : SIN_PRINCIPAL, secundarios }
 }
 
+/** Reconstruye la forma `participant.puestos` (la que devuelve `getAsignaciones`) a partir de
+ * una `fila` de selección y el catálogo, para reflejar el guardado automático en `data` sin
+ * tener que recargar toda la pantalla (RN-14: la respuesta del PUT solo trae los ids). */
+function construirPuestosGuardados(fila, catalogo) {
+  const puestosPorId = new Map(catalogo.puestos.map((p) => [p.id, p]))
+  const puestos = []
+  if (fila.principalId) {
+    const puesto = puestosPorId.get(Number(fila.principalId))
+    if (puesto) puestos.push({ id: puesto.id, tipo: 'Principal', nombre: puesto.nombre })
+  }
+  for (const puestoId of fila.secundarios) {
+    const puesto = puestosPorId.get(puestoId)
+    if (puesto) puestos.push({ id: puesto.id, tipo: 'Secundario', nombre: puesto.nombre })
+  }
+  return puestos
+}
+
 export default function RoleAssignmentPage() {
   const { serviceId } = useParams()
   const [data, setData] = useState(null)
@@ -58,20 +75,23 @@ export default function RoleAssignmentPage() {
     ...puestosPrincipales.map((p) => ({ value: p.id, label: p.nombre })),
   ]
 
+  function actualizarSeleccion(participantId, calcularFila) {
+    const actual = seleccion[participantId] ?? { principalId: SIN_PRINCIPAL, secundarios: new Set() }
+    const fila = calcularFila(actual)
+    setSeleccion((current) => ({ ...current, [participantId]: fila }))
+    guardarFila(participantId, fila)
+  }
+
   function setPrincipal(participantId, value) {
-    setSeleccion((current) => ({
-      ...current,
-      [participantId]: { ...current[participantId], principalId: value },
-    }))
+    actualizarSeleccion(participantId, (actual) => ({ ...actual, principalId: value }))
   }
 
   function toggleSecundario(participantId, puestoId) {
-    setSeleccion((current) => {
-      const actual = current[participantId]
+    actualizarSeleccion(participantId, (actual) => {
       const secundarios = new Set(actual.secundarios)
       if (secundarios.has(puestoId)) secundarios.delete(puestoId)
       else secundarios.add(puestoId)
-      return { ...current, [participantId]: { ...actual, secundarios } }
+      return { ...actual, secundarios }
     })
   }
 
@@ -87,8 +107,7 @@ export default function RoleAssignmentPage() {
     }
   }
 
-  async function guardarFila(participantId) {
-    const fila = seleccion[participantId]
+  async function guardarFila(participantId, fila) {
     const puestoIds = [
       ...(fila.principalId ? [Number(fila.principalId)] : []),
       ...Array.from(fila.secundarios),
@@ -99,6 +118,12 @@ export default function RoleAssignmentPage() {
     try {
       await guardarAsignacion(serviceId, participantId, puestoIds)
       setSavedId(participantId)
+      setData((current) => ({
+        ...current,
+        participants: current.participants.map((p) =>
+          p.id === participantId ? { ...p, puestos: construirPuestosGuardados(fila, catalogo) } : p
+        ),
+      }))
     } catch (requestError) {
       setRowErrors((current) => ({
         ...current,
@@ -170,15 +195,10 @@ export default function RoleAssignmentPage() {
                 </div>
 
                 <div className={styles.rowActions}>
-                  <button
-                    className={styles.saveButton}
-                    disabled={savingId === participant.id}
-                    onClick={() => guardarFila(participant.id)}
-                    type="button"
-                  >
-                    {savingId === participant.id ? 'Guardando…' : 'Guardar'}
-                  </button>
-                  {savedId === participant.id && <span className={styles.savedNote}>Guardado</span>}
+                  {savingId === participant.id && <span className={styles.savingNote}>Guardando…</span>}
+                  {savingId !== participant.id && savedId === participant.id && (
+                    <span className={styles.savedNote}>Guardado</span>
+                  )}
                   {rowErrors[participant.id] && <span className={styles.rowError}>{rowErrors[participant.id]}</span>}
                 </div>
               </div>

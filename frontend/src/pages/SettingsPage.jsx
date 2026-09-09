@@ -60,7 +60,8 @@ export default function SettingsPage() {
 
         <div className={styles.card}>
           <FormSection icon={Bell} title="Recordatorios automáticos">
-            <label className={styles.field}>Hora de envío (hora de Costa Rica, UTC-6)
+            <label className={styles.field}>
+              <span>Hora de envío (hora de Costa Rica, <span className={styles.nowrap}>UTC-6)</span></span>
               <ModernSelect
                 ariaLabel="Hora de envío de recordatorios"
                 onChange={(value) => { setHoraEnvioUtc6(Number(value)); setSaved(false) }}

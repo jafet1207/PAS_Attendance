@@ -24,6 +24,10 @@
   max-width: 320px;
 }
 
+.nowrap {
+  white-space: nowrap;
+}
+
 .errors {
   background: var(--color-danger-bg);
   border-left: 4px solid var(--color-danger);

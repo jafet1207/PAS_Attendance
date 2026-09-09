@@ -137,6 +137,13 @@ const ALTO_TABLA_HEADER = 34
 const ALTO_FILA_BASE = 78
 const ALTO_FILA_EXTRA_DOS_LINEAS = 22
 const AVATAR_SIZE = 52
+// Espacio que ocupa el avatar + su separación antes de que arranque el texto del nombre
+// (debe coincidir con `xNombre` en `dibujarPoster`), y un respiro mínimo antes del badge de Rol.
+const OFFSET_NOMBRE = 16 + AVATAR_SIZE + 14
+// El badge de Rol se ancla a la derecha de su propia columna (línea `xBadge` más abajo), así que
+// en el peor caso (badge tan ancho como su columna lo permite) su borde izquierdo puede meterse
+// hasta 16px dentro de la columna de Nombre; se descuenta ese margen más un respiro visual.
+const GAP_NOMBRE_BADGE = 16 + 8
 
 const anchoInterior = ANCHO - MARGEN_EXTERIOR * 2 - PADDING * 2
 
@@ -183,7 +190,8 @@ function construirPlan(data, catalogo) {
   const filasConLayout = filas.map((fila) => {
     const anchoIconos = fila.secundarios.length * 22
     ctxMedicion.font = `600 16px ${FONT}`
-    const nombreTruncado = truncarTexto(ctxMedicion, fila.name, anchoColumnaNombre - 16 - anchoIconos)
+    const anchoDisponibleNombre = anchoColumnaNombre - OFFSET_NOMBRE - GAP_NOMBRE_BADGE - anchoIconos
+    const nombreTruncado = truncarTexto(ctxMedicion, fila.name, anchoDisponibleNombre)
 
     const anchoBadgeDisponible = anchoColumnaRol - 28
     const { lineas: rolLineas, fontSize: rolFontSize } = ajustarTexto(
@@ -364,7 +372,7 @@ function dibujarPoster(ctx, plan) {
     ctx.textAlign = 'left'
 
     // Nombre + íconos de Secundario
-    const xNombre = xContenido + 16 + AVATAR_SIZE + 14
+    const xNombre = xContenido + OFFSET_NOMBRE
     ctx.fillStyle = TEXT
     ctx.font = `600 16px ${FONT}`
     ctx.fillText(fila.nombreTruncado, xNombre, yCentro)
